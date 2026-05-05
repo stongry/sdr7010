@@ -24,6 +24,16 @@ localparam N_SYM = N_FFT + N_CP;  // 80 samples per OFDM symbol
 reg [6:0]  sample_cnt;   // 0..79
 reg        synced;        // 1 after first frame_start received
 
+// BUGFIX: frame_start fires on the SAME cycle as the first valid sample
+// (bin48/CP[0] of symbol 0). Previously the if/else-if structure consumed
+// the frame_start branch and skipped processing that sample, causing every
+// downstream symbol to be off by one bin (demap thinks bin_cnt=N but the
+// stream is at bin (N+1) mod 64 — pilot/null bins get treated as data,
+// LDPC decoder gets garbage LLRs and pass_flag never fires).
+// Fix: derive an effective count where frame_start forces 0, otherwise the
+// stored counter; process the sample using that effective count.
+wire [6:0] cnt_curr = frame_start ? 7'd0 : sample_cnt;
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         sample_cnt    <= 7'd0;
@@ -35,23 +45,20 @@ always @(posedge clk or negedge rst_n) begin
         m_axis_tvalid <= 1'b0;
         m_axis_tlast  <= 1'b0;
 
-        // Synchronize on frame_start
-        if (frame_start) begin
-            sample_cnt <= 7'd0;
-            synced     <= 1'b1;
-        end else if (synced && s_axis_tvalid) begin
-            // Advance counter; wrap at N_SYM
-            if (sample_cnt == N_SYM - 1)
+        if (frame_start) synced <= 1'b1;
+
+        if ((frame_start || synced) && s_axis_tvalid) begin
+            // Advance counter (wrap at N_SYM)
+            if (cnt_curr == N_SYM - 1)
                 sample_cnt <= 7'd0;
             else
-                sample_cnt <= sample_cnt + 1'b1;
+                sample_cnt <= cnt_curr + 1'b1;
 
             // Pass through only the data portion (after CP)
-            if (sample_cnt >= N_CP) begin
+            if (cnt_curr >= N_CP) begin
                 m_axis_tdata  <= s_axis_tdata;
                 m_axis_tvalid <= 1'b1;
-                // tlast on the last data sample (sample_cnt == N_SYM-1)
-                m_axis_tlast  <= (sample_cnt == N_SYM - 1) ? 1'b1 : 1'b0;
+                m_axis_tlast  <= (cnt_curr == N_SYM - 1) ? 1'b1 : 1'b0;
             end
         end
     end

@@ -24,7 +24,8 @@ module ofdm_ldpc_top (
     output wire         dbg_fft_m_valid,  // FFT produced fft_m_tvalid
     output wire         dbg_eq_valid,     // channel_est/eq produced eq_valid_out
     output wire         dbg_demod_valid,  // qpsk_demod produced demod_valid_out
-    output wire         dbg_llr_done      // llr_buffer assembled valid_out
+    output wire         dbg_llr_done,     // llr_buffer assembled valid_out
+    output wire [K-1:0] dbg_chllr_decoded // raw hard-decision of K LLRs (no BP)
 );
 
 // ---------------------------------------------------------------------------
@@ -279,9 +280,10 @@ ldpc_decoder #(
     .llr_rd_addr (llr_rd_addr),
     .llr_rd_data (llr_rd_data),
     .valid_in    (llr_assemble_done),
-    .decoded     (rx_decoded),
-    .valid_out   (rx_valid_out),
-    .iter_count  (/* open */)
+    .decoded           (rx_decoded),
+    .valid_out         (rx_valid_out),
+    .iter_count        (/* open */),
+    .dbg_chllr_decoded (dbg_chllr_decoded)
 );
 
 endmodule

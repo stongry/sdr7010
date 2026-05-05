@@ -9,8 +9,8 @@ module tx_subcarrier_map #(
     input  wire             rst_n,
     input  wire [N_CW-1:0]  codeword,
     input  wire             codeword_vld,
-    output reg  [31:0]      ifft_tdata,
-    output reg              ifft_tvalid,
+    output wire [31:0]      ifft_tdata,
+    output wire             ifft_tvalid,
     input  wire             ifft_tready
 );
 
@@ -49,14 +49,25 @@ endfunction
 
 reg [N_CW-1:0] cw_reg;
 
+// BUGFIX: BOTH ifft_tdata AND ifft_tvalid are COMBINATIONAL on the current
+// (bin_ptr, bit_ptr, cw_reg, active).  This way the AXI-S handshake at any
+// cycle reads the data for the current bin_ptr, with no 1-cycle skew that
+// previously dropped the first sample after backpressure released and
+// clobbered every new bank's slot 0 with the prior symbol's last bin.
+assign ifft_tdata =
+    is_pilot(bin_ptr) ? {16'd0, PILOT_A} :
+    (is_data(bin_ptr) && bit_ptr < N_CW-1) ?
+        { cw_reg[bit_ptr+1] ? 16'hE95F : PILOT_A[15:0],
+          cw_reg[bit_ptr]   ? 16'hE95F : PILOT_A[15:0] } :
+    32'd0;
+assign ifft_tvalid = active;
+
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         active      <= 1'b0;
         bit_ptr     <= 10'd0;
         bin_ptr     <= 6'd0;
         sym_cnt     <= 4'd0;
-        ifft_tvalid <= 1'b0;
-        ifft_tdata  <= 32'd0;
         cw_reg      <= {N_CW{1'b0}};
     end else begin
         if (codeword_vld && !active) begin
@@ -68,40 +79,21 @@ always @(posedge clk or negedge rst_n) begin
         end
 
         if (active && ifft_tready) begin
-            ifft_tvalid <= 1'b1;
-            if (is_pilot(bin_ptr)) begin
-                // Pilot: known value PILOT_A + 0j
-                ifft_tdata <= {16'd0, PILOT_A};
-            end else if (is_data(bin_ptr) && bit_ptr < N_CW-1) begin
-                // QPSK map: bits {bit_ptr+1, bit_ptr}; 0→+A, 1→-A
-                // -5793 = 16'hE95F in 16-bit two's complement
-                ifft_tdata <= {
-                    cw_reg[bit_ptr+1] ? 16'hE95F : PILOT_A[15:0],
-                    cw_reg[bit_ptr]   ? 16'hE95F : PILOT_A[15:0]
-                };
+            // Advance bit_ptr only when this bin actually consumes 2 cw bits
+            if (is_data(bin_ptr) && bit_ptr < N_CW-1)
                 bit_ptr <= bit_ptr + 2;
-            end else begin
-                // Null subcarrier (guard / DC)
-                ifft_tdata <= 32'd0;
-            end
 
             // Advance bin
             if (bin_ptr == N_FFT - 1) begin
                 bin_ptr <= 6'd0;
                 if (sym_cnt == N_SYM - 1) begin
-                    active      <= 1'b0;
-                    // Do NOT override ifft_tvalid here: the registered 1'b1
-                    // above must propagate so bin63 of the last symbol is
-                    // accepted by cp_insert (wr_full set) before going idle.
-                    // The else-if(!active) branch clears tvalid next cycle.
+                    active <= 1'b0;
                 end else begin
                     sym_cnt <= sym_cnt + 1'b1;
                 end
             end else begin
                 bin_ptr <= bin_ptr + 1'b1;
             end
-        end else if (!active) begin
-            ifft_tvalid <= 1'b0;
         end
     end
 end

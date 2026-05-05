@@ -117,18 +117,14 @@ connect_bd_net [get_bd_pins proc_sys_reset_0/peripheral_aresetn] [get_bd_pins of
 
 # ── xlconcat: 6 debug bits → PS GPIO_I[5:0] ─────────────────────────────────
 create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat:2.1 xlconcat_0
-# Layout: bit[0]=pass, bit[1]=rxd, bit[2]=llr_done, bit[3]=eq_seen, bit[19:4]=demod_cnt, bit[31:20]=ifft_cnt
-set_property -dict [list CONFIG.NUM_PORTS {6} \
-    CONFIG.IN0_WIDTH {1} CONFIG.IN1_WIDTH {1} CONFIG.IN2_WIDTH {1} \
-    CONFIG.IN3_WIDTH {1} CONFIG.IN4_WIDTH {16} CONFIG.IN5_WIDTH {12}] \
+# Layout: bit[0]=pf, bit[1]=rxd, bit[31:2]=chllr_decoded[125:96] (raw bits)
+set_property -dict [list CONFIG.NUM_PORTS {3} \
+    CONFIG.IN0_WIDTH {1} CONFIG.IN1_WIDTH {1} CONFIG.IN2_WIDTH {30}] \
     [get_bd_cells xlconcat_0]
-# EMIO 32-bit map: pass/rxd/llr/eq + 16b demod_cnt + 12b ifft_cnt
+# EMIO 32-bit map: pf, rxd, chllr_decoded[125:96] raw
 connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/pass_flag]         [get_bd_pins xlconcat_0/In0]
 connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/rx_done]           [get_bd_pins xlconcat_0/In1]
-connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/dbg_llr_done_seen] [get_bd_pins xlconcat_0/In2]
-connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/dbg_eq_seen]       [get_bd_pins xlconcat_0/In3]
-connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/dbg_demod_cnt_o]   [get_bd_pins xlconcat_0/In4]
-connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/dbg_ifft_cnt_o]    [get_bd_pins xlconcat_0/In5]
+connect_bd_net [get_bd_pins ofdm_ldpc_pl_0/dbg_chllr_sym1_lo] [get_bd_pins xlconcat_0/In2]
 
 connect_bd_net [get_bd_pins xlconcat_0/dout] [get_bd_pins processing_system7_0/GPIO_I]
 

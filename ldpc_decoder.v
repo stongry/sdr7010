@@ -15,7 +15,9 @@ module ldpc_decoder #(
     input  wire                valid_in,
     output reg  [K-1:0]       decoded,
     output reg                valid_out,
-    output reg  [3:0]         iter_count
+    output reg  [3:0]         iter_count,
+    // DEBUG: raw hard-decision of first K LLRs (taken at ST_INIT, no BP)
+    output reg  [K-1:0]       dbg_chllr_decoded
 );
 
 // ---------------------------------------------------------------------------
@@ -165,6 +167,7 @@ always @(posedge clk or negedge rst_n) begin : main_fsm
         state          <= ST_IDLE;
         valid_out      <= 1'b0;
         iter_count     <= 4'd0;
+        dbg_chllr_decoded <= {K{1'b0}};
         iter           <= 4'd0;
         cur_row        <= 3'd0;
         cur_z          <= 6'd0;
@@ -223,6 +226,9 @@ always @(posedge clk or negedge rst_n) begin : main_fsm
                     v_llr_we  <= 1'b1;
                     v_llr_wa  <= init_cnt[9:0];
                     v_llr_wd  <= llr_rd_data;
+                    // DEBUG: raw hard-decision (just the sign bit) for first K bits
+                    if (init_cnt < K)
+                        dbg_chllr_decoded[init_cnt[8:0]] <= llr_rd_data[Q-1];
                 end
                 if (init_cnt == MB*NB*Z - 1) begin
                     cur_row        <= 3'd0;

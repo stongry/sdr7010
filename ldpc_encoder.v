@@ -185,24 +185,20 @@ always @(posedge clk or negedge rst_n) begin
 
             2'd2: begin  // Dual-diagonal back-substitution & output
                 // The parity part of H_b is dual-diagonal:
-                // Row 0: p0 = acc_row0
-                // Row 1: p1 = acc_row1 ^ p0  (with appropriate shift)
-                // ...
-                // For simplicity (unit shifts in parity cols), implement as XOR chain.
+                // Row 0: p[0] = acc_row_0          (decoder sees p[0] as the only edge → must equal acc)
+                // Row r: p[r] = acc_row_r ^ p[r-1] (decoder sees p[r-1] + p[r] edges → must XOR to acc)
+                // We compute p_local with blocking assignments so the codeword
+                // sent to decoder uses the resolved (post-XOR) parity, not the
+                // raw acc rows still sitting in parity_reg.
                 begin : parity_resolve
-                    reg [Z-1:0] p [0:MB-1];
+                    reg [K-1:0] p_local;
                     integer ri2;
-                    // p[0] is already correct (single parity col connection)
-                    for (ri2 = 0; ri2 < MB; ri2 = ri2 + 1)
-                        p[ri2] = parity_reg[ri2*Z +: Z];
-                    // Dual-diagonal: p[r] ^= p[r-1] for r=1..MB-1
+                    p_local = parity_reg;
                     for (ri2 = 1; ri2 < MB; ri2 = ri2 + 1)
-                        p[ri2] = p[ri2] ^ p[ri2-1];
-                    // Reassemble parity_reg
-                    for (ri2 = 0; ri2 < MB; ri2 = ri2 + 1)
-                        parity_reg[ri2*Z +: Z] <= p[ri2];
-                    // Output systematic codeword: [info | parity]
-                    codeword <= {parity_reg, info_reg};  // will be stale by 1; registered below
+                        p_local[ri2*Z +: Z] = p_local[ri2*Z +: Z]
+                                            ^ p_local[(ri2-1)*Z +: Z];
+                    parity_reg <= p_local;
+                    codeword   <= {p_local, info_reg};
                 end
                 valid_out <= 1'b1;
                 busy      <= 1'b0;

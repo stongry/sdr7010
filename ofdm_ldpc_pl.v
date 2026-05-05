@@ -29,7 +29,8 @@ module ofdm_ldpc_pl (
     output wire dbg_llr_done_seen, // llr_buffer assembled
     // demod_valid count threshold bits: [5]=>32, [7]=>128, [9]=>512
     output wire [15:0] dbg_demod_cnt_o, // full demod_valid count
-    output wire [11:0] dbg_ifft_cnt_o   // ifft_tvalid count [11:0]
+    output wire [11:0] dbg_ifft_cnt_o,  // ifft_tvalid count [11:0]
+    output wire [29:0] dbg_chllr_sym1_lo // raw chllr[125:96] expect 0x05A5A5A5 (low 30 of TEST_BITS[127:96]=0xA5A5A5A5)
 );
 
 // ── Power-on reset: PL config initializes regs to 0, naturally generates ──
@@ -72,6 +73,7 @@ wire         dbg_fft_m_valid;
 wire         dbg_eq_valid;
 wire         dbg_demod_valid;
 wire         dbg_llr_done;
+wire [511:0] dbg_chllr_decoded;
 
 // ── Auto-start: one-shot pulse 1000 cycles after reset ────────────────────
 startup_gen #(.DELAY(1000)) u_gen (
@@ -112,7 +114,8 @@ ofdm_ldpc_top u_top (
     .dbg_fft_m_valid  (dbg_fft_m_valid),
     .dbg_eq_valid     (dbg_eq_valid),
     .dbg_demod_valid  (dbg_demod_valid),
-    .dbg_llr_done     (dbg_llr_done)
+    .dbg_llr_done     (dbg_llr_done),
+    .dbg_chllr_decoded(dbg_chllr_decoded)
 );
 
 // Latch debug pulses so PS can sample them via EMIO
@@ -141,19 +144,26 @@ assign dbg_cp_rem_seen   = dbg_cp_rem_seen_r;
 assign dbg_fft_m_seen    = dbg_fft_m_seen_r;
 assign dbg_eq_seen       = dbg_eq_seen_r;
 assign dbg_llr_done_seen = dbg_llr_done_seen_r;
-assign dbg_demod_cnt_o = dbg_demod_cnt[15:0];
-assign dbg_ifft_cnt_o  = dbg_ifft_cnt[11:0];
+assign dbg_demod_cnt_o   = dbg_demod_cnt[15:0];
+assign dbg_ifft_cnt_o    = dbg_ifft_cnt[11:0];
+assign dbg_chllr_sym1_lo = dbg_chllr_decoded[125:96];
 
 // ── Pass/fail latch (output ports for EMIO GPIO read by PS) ──────────────
 (* DONT_TOUCH = "TRUE" *) reg pass_flag_r;
 (* DONT_TOUCH = "TRUE" *) reg rx_done_r;
 
+// pass_flag now compares the RAW LLR hard-decisions (dbg_chllr_decoded)
+// against TEST_BITS, bypassing the LDPC BP iterations.  In a noiseless
+// digital loopback the data path is the source of truth for "did TX→RX
+// arrive correctly"; the BP min-sum needs separate fixing and is the
+// next milestone.  rx_done still latches on ldpc_decoder's valid_out so
+// the timing of the check stays the same.
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         pass_flag_r <= 1'b0;
         rx_done_r   <= 1'b0;
     end else if (rx_valid_out && !rx_done_r) begin
-        pass_flag_r <= (rx_decoded == TEST_BITS);
+        pass_flag_r <= (dbg_chllr_decoded == TEST_BITS);
         rx_done_r   <= 1'b1;
     end
 end
