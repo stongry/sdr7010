@@ -1,0 +1,18 @@
+# Vivado build artifacts (none committed)
+*.bit
+*.bin
+*.dcp
+*.jou
+*.log
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Python build helpers
+__pycache__/
+*.pyc
+
+# Local boot images and bitstream backups (large, not source)
+BOOT_*.bin
+*.frm
