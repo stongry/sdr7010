@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 // =============================================================================
 // File: channel_est.v
 // Project: OFDM+LDPC FPGA Transceiver (PlutoSDR / xc7z010clg225-1)

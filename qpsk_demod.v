@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module qpsk_demod #(
     parameter SCALE = 7   // Right-shift for LLR normalization
 )(

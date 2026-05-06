@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module ldpc_encoder #(
     parameter N       = 1024,  // Codeword length
     parameter K       = 512,   // Information bits

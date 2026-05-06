@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module rx_subcarrier_demap #(
     parameter N_FFT  = 64,
     parameter N_DATA = 48,

@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module xfft_stub (
     input  wire        aclk,
     input  wire        aresetn,

@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module cp_insert #(
     parameter N_FFT = 64,
     parameter N_CP  = 16

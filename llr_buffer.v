@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module llr_buffer #(
     parameter N_CW = 1024
 )(

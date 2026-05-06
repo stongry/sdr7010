@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module qpsk_mod (
     input  wire        clk,
     input  wire        rst_n,

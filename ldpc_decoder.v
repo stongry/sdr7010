@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module ldpc_decoder #(
     parameter N        = 1024,
     parameter K        = 512,
@@ -60,9 +61,6 @@ function [5:0] hb_entry;
     end
 endfunction
 
-// Drive LLR buffer read address combinatorially from init_cnt
-assign llr_rd_addr = init_cnt[9:0];
-
 // ---------------------------------------------------------------------------
 // Distributed RAM arrays — exactly ONE read port each (asynchronous).
 // Each array is driven ONLY by its own write-only always @(posedge clk) block.
@@ -113,6 +111,10 @@ localparam ST_OUTPUT     = 3'd5;
 
 reg [2:0]  state;
 reg [12:0] init_cnt;    // 0..MB*NB*Z-1 = 8191
+
+
+// Drive LLR buffer read address combinatorially from init_cnt
+assign llr_rd_addr = init_cnt[9:0];
 reg [2:0]  cur_row;     // CNU check-node row  0..MB-1
 reg [5:0]  cur_z;       // CNU check-node pos  0..Z-1
 reg [3:0]  col_cnt;     // CNU gather/scatter col 0..NB-1

@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module llr_assembler #(
     parameter N_CW = 1024
 )(

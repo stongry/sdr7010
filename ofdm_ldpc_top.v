@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module ofdm_ldpc_top (
     input  wire         clk,
     input  wire         rst_n,
@@ -25,7 +26,7 @@ module ofdm_ldpc_top (
     output wire         dbg_eq_valid,     // channel_est/eq produced eq_valid_out
     output wire         dbg_demod_valid,  // qpsk_demod produced demod_valid_out
     output wire         dbg_llr_done,     // llr_buffer assembled valid_out
-    output wire [K-1:0] dbg_chllr_decoded // raw hard-decision of K LLRs (no BP)
+    output wire [511:0] dbg_chllr_decoded // raw hard-decision of K LLRs (no BP)
 );
 
 // ---------------------------------------------------------------------------

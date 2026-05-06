@@ -1,3 +1,4 @@
+`timescale 1ns/1ps
 module tx_subcarrier_map #(
     parameter N_FFT  = 64,
     parameter N_DATA = 48,
