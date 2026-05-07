@@ -106,32 +106,32 @@ ax.text(4.6, 17.60, "encode → map → IFFT → CP-insert → DAC",
         fontsize=12.5, weight="bold", color="#1f3a93")
 
 # Debug pills row (TX) — sits below the header, above the boxes
-yellow_pill(4.2,  16.55, 2.3, 0.55, "dbg_enc_valid")
-yellow_pill(10.8, 16.55, 2.0, 0.55, "dbg_ifft_valid")
+yellow_pill(3.75,  16.55, 2.1, 0.55, "dbg_enc_valid")
+yellow_pill(10.55, 16.55, 1.7, 0.55, "dbg_ifft_valid")
 
 # TX module row
 TX_Y, TX_H = 14.4, 1.5
 ARR_Y_TX = TX_Y + TX_H / 2
 
-port_box(0.4, TX_Y + 0.15, 2.7, TX_H - 0.30,
+port_box(0.4, TX_Y + 0.15, 2.4, TX_H - 0.30,
          "tx_info_bits[511:0]\ntx_valid_in")
-box(3.7, TX_Y, 2.6, TX_H, "u_ldpc_enc", "#CFE0F4",
+box(3.7, TX_Y, 2.2, TX_H, "u_ldpc_enc", "#CFE0F4",
     "ldpc_encoder\n(1024,512) IRA QC")
-box(7.0, TX_Y, 2.7, TX_H, "u_tx_map", "#CFE0F4",
+box(7.1, TX_Y, 2.2, TX_H, "u_tx_map", "#CFE0F4",
     "tx_subcarrier_map\n48d + 4p + 12N")
-box(10.4, TX_Y, 2.1, TX_H, "u_ifft", "#CFE0F4",
-    "xfft_stub  (IFFT)\n64-pt complex")
-box(13.2, TX_Y, 2.2, TX_H, "u_cp_ins", "#CFE0F4",
+box(10.5, TX_Y, 1.8, TX_H, "u_ifft", "#CFE0F4",
+    "xfft_stub (IFFT)\n64-pt complex")
+box(13.5, TX_Y, 2.0, TX_H, "u_cp_ins", "#CFE0F4",
     "cp_insert\nCP=16, ping-pong")
-port_box(16.1, TX_Y + 0.15, 2.7, TX_H - 0.30,
+port_box(16.7, TX_Y + 0.15, 2.7, TX_H - 0.30,
          "tx_iq_i [15:0]\ntx_iq_q [15:0]\ntx_valid_out")
 
-# TX arrows
-harrow(3.1, 3.7,  ARR_Y_TX, "valid_in",     "1 pulse / block")
-harrow(6.3, 7.0,  ARR_Y_TX, "enc_codeword", "1024 bits")
-harrow(9.7, 10.4, ARR_Y_TX, "ifft_s_tdata", "(I,Q) freq")
-harrow(12.5, 13.2, ARR_Y_TX, "ifft_m_tdata", "(I,Q) time")
-harrow(15.4, 16.1, ARR_Y_TX, "cp_ins_tdata", "+CP, 80/sym")
+# TX arrows  (gaps widened to 1.2 axis units so caption pills fit cleanly)
+harrow(2.8, 3.7,  ARR_Y_TX, "valid_in",     "1 pulse / block")
+harrow(5.9, 7.1,  ARR_Y_TX, "enc_codeword", "1024 bits")
+harrow(9.3, 10.5, ARR_Y_TX, "ifft_s_tdata", "(I,Q) freq")
+harrow(12.3, 13.5, ARR_Y_TX, "ifft_m_tdata", "(I,Q) time")
+harrow(15.5, 16.7, ARR_Y_TX, "cp_ins_tdata", "+CP, 80/sym")
 
 # ---------------------------------------------------------------------------
 # Loopback box (between TX and RX rows, far right)
@@ -149,7 +149,7 @@ ax.text(LB_X + LB_W / 2, LB_Y + LB_H * 0.36,
 
 # tx_iq port -> loopback (right then down)
 ax.annotate("", xy=(LB_X + LB_W * 0.5, LB_Y + LB_H),
-            xytext=(18.8, ARR_Y_TX - 0.15),
+            xytext=(19.4, ARR_Y_TX - 0.15),
             arrowprops=dict(arrowstyle="->", color="black", lw=1.7,
                             connectionstyle="angle,angleA=0,angleB=90,rad=0"))
 ax.text(LB_X + LB_W * 0.5 + 0.30, ARR_Y_TX - 1.55,
@@ -171,35 +171,35 @@ RX_Y, RX_H = 6.9, 1.5
 ARR_Y_RX = RX_Y + RX_H / 2
 
 # Taller port box so its 3 lines of text aren't crowded into the arrow band
-port_box(15.9, RX_Y - 0.35, 3.4, RX_H + 0.30,
+port_box(16.7, RX_Y - 0.35, 2.7, RX_H + 0.30,
          "rx_iq_i [15:0]\nrx_iq_q [15:0]\nrx_valid_in / rx_frame_start")
-box(13.2, RX_Y, 2.2, RX_H, "u_cp_rem", "#FCD8C2",
+box(13.5, RX_Y, 2.0, RX_H, "u_cp_rem", "#FCD8C2",
     "cp_remove\nframe_start sync")
-box(10.4, RX_Y, 2.1, RX_H, "u_fft", "#FCD8C2",
-    "xfft_stub  (FFT)\n64-pt")
-box(7.0,  RX_Y, 2.7, RX_H, "u_ch_est", "#FCD8C2",
+box(10.5, RX_Y, 1.8, RX_H, "u_fft", "#FCD8C2",
+    "xfft_stub (FFT)\n64-pt")
+box(7.1,  RX_Y, 2.2, RX_H, "u_ch_est", "#FCD8C2",
     "channel_est\nSTREAM_MODE pilot eq")
-box(3.7,  RX_Y, 2.6, RX_H, "u_rx_demap", "#FCD8C2",
+box(3.7,  RX_Y, 2.2, RX_H, "u_rx_demap", "#FCD8C2",
     "rx_subcarrier_demap\ndrop NULL/pilot → 48d")
-box(0.4,  RX_Y, 2.6, RX_H, "u_qpsk_demod", "#FCD8C2",
+box(0.4,  RX_Y, 2.2, RX_H, "u_qpsk_demod", "#FCD8C2",
     "qpsk_demod\nSCALE=7 LLR + sat8")
 
-# RX arrows go right -> left (data flows from RF to qpsk_demod)
-harrow(15.9, 15.4, ARR_Y_RX, "rx_iq",        "raw I/Q",        color="#5b3a00")
-harrow(13.2, 12.5, ARR_Y_RX, "cp_rem_tdata", "AXI-S 64/sym",   color="#5b3a00")
-harrow(10.4,  9.7, ARR_Y_RX, "fft_m_tdata",  "freq bins",      color="#5b3a00")
-harrow(7.0,   6.3, ARR_Y_RX, "eq_tdata",     "equalised I/Q",  color="#5b3a00")
-harrow(3.7,   3.0, ARR_Y_RX, "demap_tdata",  "48 data/sym",    color="#5b3a00")
+# RX arrows go right -> left (gaps widened to 1.1-1.2 so caption pills fit)
+harrow(16.7, 15.5, ARR_Y_RX, "rx_iq",        "raw I/Q",        color="#5b3a00")
+harrow(13.5, 12.3, ARR_Y_RX, "cp_rem_tdata", "AXI-S 64/sym",   color="#5b3a00")
+harrow(10.5,  9.3, ARR_Y_RX, "fft_m_tdata",  "freq bins",      color="#5b3a00")
+harrow(7.1,   5.9, ARR_Y_RX, "eq_tdata",     "equalised I/Q",  color="#5b3a00")
+harrow(3.7,   2.6, ARR_Y_RX, "demap_tdata",  "48 data/sym",    color="#5b3a00")
 
 # Debug pills below RX (dbg_demod_valid moved RIGHT so it never sits on
 # the qpsk_demod -> llr_buf down-arrow column)
-yellow_pill(13.3, 5.85, 2.0, 0.55, "dbg_cp_rem_valid")
-yellow_pill(10.5, 5.85, 1.9, 0.55, "dbg_fft_m_valid")
-yellow_pill(7.4,  5.85, 1.9, 0.55, "dbg_eq_valid")
-yellow_pill(3.7,  5.85, 2.0, 0.55, "dbg_demod_valid")
+yellow_pill(13.55, 5.85, 1.9, 0.55, "dbg_cp_rem_valid")
+yellow_pill(10.55, 5.85, 1.7, 0.55, "dbg_fft_m_valid")
+yellow_pill(7.25,  5.85, 1.9, 0.55, "dbg_eq_valid")
+yellow_pill(3.85,  5.85, 1.9, 0.55, "dbg_demod_valid")
 
 # loopback -> rx_iq port (down then left)
-ax.annotate("", xy=(17.6, RX_Y + RX_H + 0.25),
+ax.annotate("", xy=(18.0, RX_Y + RX_H + 0.25),
             xytext=(LB_X + LB_W * 0.5, LB_Y),
             arrowprops=dict(arrowstyle="->", color="black", lw=1.7,
                             connectionstyle="angle,angleA=-90,angleB=180,rad=0"))
@@ -211,7 +211,7 @@ ax.text(19.5, (LB_Y + RX_Y + RX_H) / 2,
 # ---------------------------------------------------------------------------
 # u_llr_buf -> u_ldpc_dec -> rx_decoded
 # ---------------------------------------------------------------------------
-LLR_X, LLR_Y, LLR_W, LLR_H = 0.4, 3.4, 2.6, 1.4
+LLR_X, LLR_Y, LLR_W, LLR_H = 0.4, 3.4, 2.2, 1.4
 box(LLR_X, LLR_Y, LLR_W, LLR_H, "u_llr_buf", "#FCD8C2",
     "llr_buffer\n1024 LLRs")
 
@@ -227,7 +227,7 @@ ax.text(LLR_X + LLR_W / 2 + 0.20, (LLR_Y + LLR_H + RX_Y) / 2,
 
 # dbg_llr_done pill — placed BELOW u_llr_buf so it does not collide with
 # the u_llr_buf -> u_ldpc_dec arrow or its "1024 LLRs" caption.
-yellow_pill(LLR_X + 0.30, LLR_Y - 0.75, 2.0, 0.55, "dbg_llr_done")
+yellow_pill(LLR_X + 0.25, LLR_Y - 0.75, 1.7, 0.55, "dbg_llr_done")
 
 LDP_X, LDP_Y, LDP_W, LDP_H = 6.5, 3.4, 3.0, 1.4
 box(LDP_X, LDP_Y, LDP_W, LDP_H, "u_ldpc_dec", "#FCD8C2",
