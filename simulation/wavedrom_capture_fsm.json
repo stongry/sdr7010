@@ -49,10 +49,10 @@
     }
   ],
   "head": {
-    "text": "TB capture FSM \u2014 bit_idx grows 0\u219232, decoded fills to 0x0F0F0F0F",
+    "text": "TB capture FSM \u2014 bit_idx grows 0->32, decoded fills to 0x0F0F0F0F",
     "tick": -15
   },
   "config": {
-    "hscale": 1.5
+    "hscale": 2.5
   }
 }

@@ -12,7 +12,7 @@
 # =============================================================================
 set -e
 SRC=/home/ysara/fpga_hdl
-OUT=/home/ysara/fpga_hdl/path_x_sim
+OUT=/home/ysara/fpga_hdl/simulation/path_x_sim
 mkdir -p $OUT
 cd $OUT
 

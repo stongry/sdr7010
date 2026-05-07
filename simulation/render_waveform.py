@@ -93,7 +93,7 @@ def step_xy(events, t_max):
 
 
 def main():
-    vcd = "/home/ysara/fpga_hdl/path_x_simple.vcd"
+    vcd = "/home/ysara/fpga_hdl/simulation/path_x_simple.vcd"
     series = parse_vcd(vcd)
 
     # Pick window: 50 ns ... 510 ns covers reset → all 16 QPSK pairs → final compare
@@ -168,7 +168,7 @@ def main():
              "Final: decoded[31:0] = 0x0F0F0F0F  |  expected = 0x0F0F0F0F  |  errors = 0/32  ✓ PASS",
              ha="right", fontsize=10, color="darkgreen", weight="bold")
 
-    out = "/home/ysara/fpga_hdl/path_x_simple_waveform.png"
+    out = "/home/ysara/fpga_hdl/simulation/path_x_simple_waveform.png"
     plt.savefig(out, dpi=120, bbox_inches="tight")
     print(f"Saved: {out}")
 
