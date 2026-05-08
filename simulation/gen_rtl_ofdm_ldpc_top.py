@@ -39,7 +39,8 @@ def box(x, y, w, h, label, color, sub=""):
     ax.add_patch(patches.FancyBboxPatch(
         (x, y), w, h, boxstyle="round,pad=0.06",
         linewidth=1.6, edgecolor="black", facecolor=color))
-    ax.text(x + w / 2, y + h * 0.62, label,
+    label_y = y + h * 0.62 if sub else y + h * 0.5
+    ax.text(x + w / 2, label_y, label,
             ha="center", va="center", fontsize=12, weight="bold")
     if sub:
         ax.text(x + w / 2, y + h * 0.27, sub,
@@ -115,14 +116,10 @@ ARR_Y_TX = TX_Y + TX_H / 2
 
 port_box(0.4, TX_Y + 0.15, 2.4, TX_H - 0.30,
          "tx_info_bits[511:0]\ntx_valid_in")
-box(3.7, TX_Y, 2.2, TX_H, "u_ldpc_enc", "#CFE0F4",
-    "(1024,512) IRA QC")
-box(7.1, TX_Y, 2.2, TX_H, "u_tx_map", "#CFE0F4",
-    "48d + 4p + 12N")
-box(10.5, TX_Y, 1.8, TX_H, "u_ifft", "#CFE0F4",
-    "64-pt complex")
-box(13.5, TX_Y, 2.0, TX_H, "u_cp_ins", "#CFE0F4",
-    "CP=16, ping-pong")
+box(3.7, TX_Y, 2.2, TX_H, "u_ldpc_enc", "#CFE0F4")
+box(7.1, TX_Y, 2.2, TX_H, "u_tx_map", "#CFE0F4")
+box(10.5, TX_Y, 1.8, TX_H, "u_ifft", "#CFE0F4")
+box(13.5, TX_Y, 2.0, TX_H, "u_cp_ins", "#CFE0F4")
 port_box(16.7, TX_Y + 0.15, 2.7, TX_H - 0.30,
          "tx_iq_i [15:0]\ntx_iq_q [15:0]\ntx_valid_out")
 
@@ -173,16 +170,11 @@ ARR_Y_RX = RX_Y + RX_H / 2
 # Taller port box so its 3 lines of text aren't crowded into the arrow band
 port_box(16.7, RX_Y - 0.35, 2.7, RX_H + 0.30,
          "rx_iq_i [15:0]\nrx_iq_q [15:0]\nrx_valid_in / rx_frame_start")
-box(13.5, RX_Y, 2.0, RX_H, "u_cp_rem", "#FCD8C2",
-    "frame_start sync")
-box(10.5, RX_Y, 1.8, RX_H, "u_fft", "#FCD8C2",
-    "64-pt")
-box(7.1,  RX_Y, 2.2, RX_H, "u_ch_est", "#FCD8C2",
-    "STREAM_MODE pilot eq")
-box(3.7,  RX_Y, 2.2, RX_H, "u_rx_demap", "#FCD8C2",
-    "drop NULL/pilot → 48d")
-box(0.4,  RX_Y, 2.2, RX_H, "u_qpsk_demod", "#FCD8C2",
-    "SCALE=7 LLR + sat8")
+box(13.5, RX_Y, 2.0, RX_H, "u_cp_rem", "#FCD8C2")
+box(10.5, RX_Y, 1.8, RX_H, "u_fft", "#FCD8C2")
+box(7.1,  RX_Y, 2.2, RX_H, "u_ch_est", "#FCD8C2")
+box(3.7,  RX_Y, 2.2, RX_H, "u_rx_demap", "#FCD8C2")
+box(0.4,  RX_Y, 2.2, RX_H, "u_qpsk_demod", "#FCD8C2")
 
 # RX arrows go right -> left (gaps widened to 1.1-1.2 so caption pills fit)
 harrow(16.7, 15.5, ARR_Y_RX, "rx_iq",        "raw I/Q",        color="#5b3a00")
@@ -212,8 +204,7 @@ ax.text(19.5, (LB_Y + RX_Y + RX_H) / 2,
 # u_llr_buf -> u_ldpc_dec -> rx_decoded
 # ---------------------------------------------------------------------------
 LLR_X, LLR_Y, LLR_W, LLR_H = 0.4, 3.4, 2.2, 1.4
-box(LLR_X, LLR_Y, LLR_W, LLR_H, "u_llr_buf", "#FCD8C2",
-    "1024 LLRs")
+box(LLR_X, LLR_Y, LLR_W, LLR_H, "u_llr_buf", "#FCD8C2")
 
 # Down arrow from u_qpsk_demod to u_llr_buf
 ax.annotate("", xy=(LLR_X + LLR_W / 2, LLR_Y + LLR_H),
@@ -230,8 +221,7 @@ ax.text(LLR_X + LLR_W / 2 + 0.20, (LLR_Y + LLR_H + RX_Y) / 2,
 yellow_pill(LLR_X + 0.25, LLR_Y - 0.75, 1.7, 0.55, "dbg_llr_done")
 
 LDP_X, LDP_Y, LDP_W, LDP_H = 6.5, 3.4, 3.0, 1.4
-box(LDP_X, LDP_Y, LDP_W, LDP_H, "u_ldpc_dec", "#FCD8C2",
-    "min-sum BP, MAX_ITER=10")
+box(LDP_X, LDP_Y, LDP_W, LDP_H, "u_ldpc_dec", "#FCD8C2")
 
 ax.annotate("", xy=(LDP_X, LDP_Y + LDP_H * 0.5),
             xytext=(LLR_X + LLR_W, LLR_Y + LLR_H * 0.5),
