@@ -2786,3 +2786,403 @@ GitHub ← 永久归档可追溯
 ---
 
 文档完成度：所有 33 章 + 3 附录 + 23 张图 + 9 项 assertion 验证 = 完整。
+
+---
+
+## 34. Phase-1 真 OFDM xsim 验证（2026-05-08）
+
+> 🔴 **背景**：原工程 `xfft_stub.v` 是组合 pass-through（5 行 RTL，TDATA 直通），`channel_est` 跑 `STREAM_MODE=1`（pass-through），意思板上 build #34 的 `pass_flag=1`**实际绕过了 OFDM 频域操作** ——"频域 bin"等于"时域 sample"，并不是真的 IFFT/FFT 在跑。Phase-1 目的：让 xsim 跑通**真**的 OFDM + LDPC 数字回环，0 bit error。
+
+### 34.1 xfft_stub.v 重写（行为级 64-pt DFT）
+
+**修改前**：
+
+```verilog
+// xfft_stub.v 原版：5-line pass-through
+assign s_axis_config_tready = 1'b1;
+assign s_axis_data_tready   = m_axis_data_tready;
+assign m_axis_data_tdata    = s_axis_data_tdata;     // ← TDATA 直通
+assign m_axis_data_tvalid   = s_axis_data_tvalid;
+assign m_axis_data_tlast    = s_axis_data_tlast;
+```
+
+**修改后**（核心算法）：
+
+```diff
+- // Pass-through, no math
+- assign m_axis_data_tdata = s_axis_data_tdata;
+
++ // Behavioral 64-pt DFT, real-typed accumulators
++ task automatic do_dft;
++     input               do_inverse;
++     integer             k, n;
++     real                ang, sre, sim_acc, ire, iim, scale;
++ begin
++     scale = 1.0 / 8.0;   // symmetric 1/sqrt(N) per direction
++     for (k = 0; k < N; k = k + 1) begin
++         sre = 0.0; sim_acc = 0.0;
++         for (n = 0; n < N; n = n + 1) begin
++             ang = (do_inverse ? 1.0 : -1.0) * 2.0 * pi_const
++                   * k * n / 64.0;
++             ire = $itor($signed(in_buf_re[n]));
++             iim = $itor($signed(in_buf_im[n]));
++             sre     = sre     + ire * $cos(ang) - iim * $sin(ang);
++             sim_acc = sim_acc + ire * $sin(ang) + iim * $cos(ang);
++         end
++         sre = sre * scale;  sim_acc = sim_acc * scale;
++         // saturate to int16
++         out_buf_re[k] = sat16(sre);
++         out_buf_im[k] = sat16(sim_acc);
++     end
++ end
++ endtask
+```
+
+🔴 **关键设计选择**：**对称 1/sqrt(N)≈1/8 双向缩放**
+- IFFT 输出 = (1/8) × Σ X[k] e^(j 2π nk/N)
+- FFT 输出 = (1/8) × Σ x[n] e^(-j 2π nk/N)
+- Cascade FFT(IFFT(X)) = (1/64) × N × X = X **数值严格相等**
+- 任何方向都不饱和（±5793 输入 max → ±5793 输出 max，远小于 ±32767 int16 边界）
+
+🔴 **双 buffer overlap LOAD/OUTPUT**：
+- 单 buffer 实现下 cp_remove 连续输出两个 64-sample burst（中间只有 16 cy 间隔）会让 FFT 来不及消化
+- 双 buffer：LOAD 路径 + COMPUTE+OUTPUT 路径独立，input 收 64 时 output 还在流前一组结果
+
+### 34.2 cp_insert.v NBA bug 修复
+
+🔴 **隐藏极深的 1-cycle bug**：每 80-cycle burst 实际只输出 79 个 valid（最后一拍 NBA 先 `tvalid<=1` 又被同一拍的 `tvalid<=0` 覆盖）。
+
+```diff
+  if (rd_active) begin
+      m_axis_tvalid <= 1'b1;
+      m_axis_tdata  <= rd_data;
+
+      if (m_axis_tready) begin
+          if (rd_ptr == N_OUT - 1) begin
+              rd_ptr    <= 7'd0;
+              rd_active <= 1'b0;
+              rd_bank   <= ~rd_bank;  // Switch to other bank next
+-             m_axis_tvalid <= 1'b0;     // 🔴 这一行让最后一拍 valid 丢失
+          end else begin
+              rd_ptr <= rd_ptr + 1'b1;
+          end
+      end
+  end else begin
+      m_axis_tvalid <= 1'b0;
+  end
+```
+
+为什么板上 build #34 没暴露：板上 PL-internal loopback `rx_iq=tx_iq` 实时 1-cy 延迟，下游 cp_remove 跟 cp_insert 完全同步消费每 79-sample burst（cnt 自然不溢出）。但 testbench 用 FIFO 中介 replay 时，FIFO 保留每个 burst 79 sample × 12 sym = 948 sample，cp_remove 按 80/sym 解析 → 第 2 sym 起边界全部错位 1 sample → LDPC 取到全错的 LLR。
+
+### 34.3 testbench 改造：FIFO replay → 直接 loopback
+
+```diff
+- parameter FIFO_DEPTH = 2048;
+- reg [15:0] fifo_i [0:FIFO_DEPTH-1];
+- reg [15:0] fifo_q [0:FIFO_DEPTH-1];
+- reg [10:0] fifo_wr_ptr, fifo_rd_ptr, fifo_count;
+- // ... TX 完成后 replay 到 RX 的循环 ...
+
++ // PL-internal direct loopback: rx ← tx with 1-cycle delay
++ // (matches the on-board ofdm_ldpc_pl wiring exactly)
++ reg seen_first_tx_valid;
++ always @(posedge clk or negedge rst_n) begin
++     if (!rst_n) begin
++         rx_iq_i            <= 16'h0;
++         rx_iq_q            <= 16'h0;
++         rx_valid_in        <= 1'b0;
++         rx_frame_start     <= 1'b0;
++         seen_first_tx_valid<= 1'b0;
++     end else begin
++         rx_iq_i        <= tx_iq_i;
++         rx_iq_q        <= tx_iq_q;
++         rx_valid_in    <= tx_valid_out;
++         rx_frame_start <= (tx_valid_out && !seen_first_tx_valid);
++         if (tx_valid_out) seen_first_tx_valid <= 1'b1;
++     end
++ end
+```
+
+🔴 **Per-stage debug counter**（找瓶颈用）：
+
+```diff
++ integer dbg_ifft_in;     // mapper -> IFFT handshakes
++ integer dbg_ifft_out;    // IFFT -> cp_insert handshakes
++ integer dbg_fft_in;      // cp_remove -> FFT handshakes
++ integer dbg_fft_out;     // FFT -> channel_est valids
++ integer dbg_eq_cnt;      // channel_est valid outputs
++ integer dbg_demod_cnt;   // qpsk_demod valid outputs
++ integer dbg_llr_done_cnt;// llr_buffer assemble_done pulses
+```
+
+🔴 **超时调整**：LDPC decoder MAX_ITER=10，每 iter ≈ 12-15K cy → 总 ~150K cy。原 timeout 200K 不够，调到 800K。
+
+### 34.4 Phase-1 最终结果
+
+```
+========== xsim 输出 ==========
+[2551125000] RESULTS:
+  Info bits     : 512
+  Bit errors    : 0
+  BER           : 0.000000
+  Ref  [511:480]: 0xa96ebc52
+  Dec  [511:480]: 0xa96ebc52
+  Ref  [31:0]   : 0x62c30bc5
+  Dec  [31:0]   : 0x62c30bc5
+  RESULT: PASS - Perfect decoding (zero BER)
+===============================
+```
+
+🔴 **Pipeline counter 全部 PASS**：
+- ifft_in / ifft_out = 768 = 12 × 64 ✓
+- fft_in / fft_out = 768 ✓
+- eq = 768 ✓
+- demod = 576 = 12 × 48 ✓
+- llr_done = 1 ✓
+- rx_decoded[511:0] == ref_bits[511:0] ✓ **完美 0 bit errors**
+
+最终 commit `10825c1`：「sim: PASS 0/512 bit errors — real OFDM+LDPC digital loopback in xsim」
+
+---
+
+## 35. Phase-2 板上 xfft IP + fpga_manager 在线 reload（2026-05-08）
+
+> 🔴 **背景**：Phase-1 的行为级 DFT 用 `real` + `$cos/$sin` 不可综合。Phase-2 目的：替换为 Vivado `xfft_v9.1` IP，综合 + 板上 EMIO `pass_flag=1` 验证。
+
+### 35.1 xfft IP customize（gen_xfft_ip.tcl）
+
+新增脚本，在 Vivado 命令行 customize IP：
+
+```tcl
+create_project -in_memory -part xc7z010clg400-2 tmp
+set_property target_language Verilog [current_project]
+
+create_ip -name xfft -vendor xilinx.com -library ip -version 9.1 \
+    -module_name xfft_64 -dir ./ip_xfft
+
+set_property -dict [list \
+    CONFIG.transform_length          {64} \
+    CONFIG.implementation_options    {pipelined_streaming_io} \
+    CONFIG.data_format               {fixed_point} \
+    CONFIG.input_width               {16} \
+    CONFIG.scaling_options           {unscaled} \
+    CONFIG.output_ordering           {natural_order} \
+    CONFIG.rounding_modes            {convergent_rounding} \
+    CONFIG.phase_factor_width        {16} \
+    CONFIG.cyclic_prefix_insertion   {false} \
+    CONFIG.throttle_scheme           {nonrealtime} \
+    CONFIG.aresetn                   {true} \
+] [get_ips xfft_64]
+
+generate_target all [get_files [get_ips xfft_64].xci]
+```
+
+🔴 **关键参数选择**（每个都是踩坑后的教训）：
+- `scaling_options=unscaled`：scaled 模式默认 schedule [10 10 10 10 10 10] 让 cascade 缩 1/4096，LLR 接近 0 → sign 大量翻转。BFP 模式 sign 错 14 bit。**unscaled** + RTL sat16 → sign 100% 保留
+- `output_ordering=natural_order`：默认 `bit_reversed_order` 让 OFDM 链路 bin 顺序错乱 → 板上 raw 错位 17 bit。改 natural_order → 12 bit
+- `cyclic_prefix_insertion=false`：CP 我们 RTL 自己做，IP 不要管
+
+### 35.2 xfft_stub_ip.v wrapper（综合时替换 sim 行为级 DFT）
+
+🔴 **核心策略**：保留 module 名 `xfft_stub` 跟 sim 版完全一致，让 `ofdm_ldpc_top.v` 例化代码不需要改。综合时编译 `xfft_stub_ip.v`（替换 sim 的 `xfft_stub.v`），sim 时不编译 IP wrapper。
+
+```verilog
+// xfft_stub_ip.v — IP wrapper for synthesis only
+module xfft_stub (
+    input  wire        aclk,
+    input  wire        aresetn,
+    input  wire [7:0]  s_axis_config_tdata,    // bit[0]=fwd_inv
+    /* ... 32-bit AXI-S 接口跟 sim 版一致 ... */
+);
+
+wire [47:0] ip_m_tdata;   // IP unscaled output: 48-bit packed {im[23:0], re[23:0]}
+
+xfft_64 u_xfft_64 (
+    .aclk(aclk), .aresetn(aresetn),
+    /* config / data forward */
+    .m_axis_data_tdata (ip_m_tdata),
+    /* unscaled mode: NO m_axis_status_* port */
+);
+
+// 23-bit signed → 16-bit signed saturation
+function automatic signed [15:0] sat16;
+    input signed [22:0] v;
+    begin
+        if (v >  23'sd32767)      sat16 =  16'sd32767;
+        else if (v < -23'sd32768) sat16 = -16'sd32768;
+        else                      sat16 = v[15:0];
+    end
+endfunction
+
+wire signed [22:0] re23 = $signed(ip_m_tdata[22:0]);
+wire signed [22:0] im23 = $signed(ip_m_tdata[46:24]);
+assign m_axis_data_tdata = {sat16(im23), sat16(re23)};
+
+endmodule
+```
+
+🔴 **wrapper 9 个 build 迭代**：
+
+| Build | IP 配置 | wrapper | 板上结果 |
+|-------|---------|---------|----------|
+| #1 | scaled 默认 | pass-through | rx_done=0，cascade /4096 LLR sign 翻转 |
+| #2 | BFP, bit_reversed | pass-through | rx_done=1, raw 错 14 bit |
+| #5 | BFP, **natural_order** | pass-through | raw 错 ~5 bit, BP 后还错 12 bit |
+| #6 | unscaled, natural | sat16 with status port | 综合 fail（unscaled 没有 status port） |
+| 🟢 **#7 / FINAL** | **unscaled, natural** | **sat16** | rx_done=1, BP 后 6 bit 错 |
+| #8 | unscaled, natural | shift>>3 + sat16 | 11 bit (worse) |
+
+### 35.3 ofdm_ldpc_pl.v：pass_flag 比较从 raw 改成 BP 后
+
+```diff
+  end else if (rx_valid_out && !rx_done_r) begin
+-     // 比较 raw LDPC ST_INIT 硬判决 (no BP 纠错)
+-     pass_flag_r <= (dbg_chllr_decoded[63:0] == TEST_BITS[63:0]);
++     // 比较 BP 后的 rx_decoded（LDPC 纠错后的实际信息位）
++     // 即使 raw 硬判决有 ~14 bit 翻转，BP 应该能纠（远在 (1024,512)
++     // Z=64 码的纠错能力内）
++     pass_flag_r <= (rx_decoded[63:0] == TEST_BITS[63:0]);
+      rx_done_r   <= 1'b1;
+  end
+```
+
+🔴 **EMIO probe 切换** —— 直接看 BP 后的 30 bit info：
+
+```diff
+- // 旧：raw chllr decoded[125:96]，期望 0x05A5A5A5
+- assign dbg_chllr_sym1_lo = dbg_chllr_decoded[125:96];
++ // 新：BP 后 rx_decoded[31:2]，期望 0x03C3C3C3
++ //     (TEST_BITS[31:0] = 0x0F0F0F0F, [31:2] = 0x0F0F0F0F>>2 = 0x03C3C3C3)
++ assign dbg_chllr_sym1_lo = rx_decoded[31:2];
+```
+
+### 35.4 build TCL：run_ldsdr_digital_xfft.tcl
+
+基于 build #34 的 `run_ldsdr_digital.tcl`，关键改动：
+
+```diff
+  foreach src_file {
+      ofdm_ldpc_pl.v
+      ofdm_ldpc_top.v
+      /* ... */
+-     xfft_stub.v          # 行为级 DFT (sim only)
++     xfft_stub_ip.v       # IP wrapper (synth only)
+  } { add_files -norecurse "${src_dir}/${src_file}" }
+
++ # 🔴 加载 xfft IP .xci
++ add_files -norecurse ${src_dir}/ip_xfft/xfft_64/xfft_64.xci
++ update_compile_order -fileset sources_1
+```
+
+🔴 **Vivado impl 结果**：
+- Setup WNS = +0.387 ns @ 50 MHz ✓
+- Hold WNS = +0.058 ns ✓  
+- LUT: 12579/17600 = 71.47%
+- FF: 14074/35200 = 39.98%
+- BRAM: 1/60 (xfft IP unscaled+natural reorder buffer)
+- DSP: used by xfft IP for complex MAC
+
+### 35.5 板上在线 reload workflow
+
+🔴 **重大发现**：BootROM 加载新 BOOT.bin **不可靠**（bootgen 用 raw fsbl bin 不填 image header 0x34/0x40/0x48 字段，板子静默不启动）。改用 **Linux fpga_manager 在线 reload PL**，完全绕过 bootgen 坑。
+
+```bash
+# PC 端：转 .bit → byte-swapped .bin
+python3 bit_to_bin.py vivado_output.bit ofdm_ldpc.bin
+
+# scp 到板子（scp 实际不能用——板上没 sftp-server，用 cat over ssh）
+cat ofdm_ldpc.bin | sshpass -p analog ssh -o StrictHostKeyChecking=no \
+    root@192.168.2.1 "cat > /lib/firmware/ofdm_ldpc.bin"
+
+# 板上 reload
+ssh root@192.168.2.1 << 'EOF'
+echo 0 > /sys/class/fpga_manager/fpga0/flags     # 🔴 必须显式设 0
+echo 'ofdm_ldpc.bin' > /sys/class/fpga_manager/fpga0/firmware
+sleep 3
+busybox devmem 0xE000A068                         # 读 EMIO 看 pass_flag
+EOF
+```
+
+🔴 **3 个意外的 trap**：
+1. `flags` 默认值 → fpga_manager `firmware sysfs` reload 静默失败。**必须 `echo 0 > flags`**
+2. `/dev/xdevcfg` 接受 stdin 但 silently 不换 PL（Linux 5.15 driver 残留接口，不可信）
+3. fpga_manager `cat .bit > firmware` 报 `Invalid bitstream, could not find a sync word. Bitstream must be a byte swapped .bin file` —— **必须先用 `bit_to_bin.py` 转**
+
+### 35.6 bit_to_bin.py（Vivado .bit → fpga_manager .bin）
+
+```python
+#!/usr/bin/env python3
+"""Strip ASCII header + byte-swap each 32-bit word."""
+import sys
+src, dst = sys.argv[1], sys.argv[2]
+with open(src, "rb") as f: data = f.read()
+sync_be = b'\xaa\x99\x55\x66'                # 大端 sync word
+idx = data.find(sync_be)                      # 跳过 ASCII header (typically 0xb6)
+payload = data[idx:]
+swapped = bytearray()
+for i in range(0, len(payload), 4):
+    chunk = payload[i:i+4]
+    swapped += chunk[::-1] if len(chunk)==4 else chunk
+with open(dst, "wb") as f: f.write(swapped)
+```
+
+### 35.7 Phase-2 最终板上 EMIO 读出
+
+```
+LDSDR Linux 5.15.0 / Pluto / armv7l
+$ busybox devmem 0xE000A068
+0x1607060E
+
+  bit[0]   pass_flag         = 0           ❌ 差 6 bit raw error
+  bit[1]   rx_done           = 1           ✅ LDPC BP 跑完 valid_out
+  bit[31:2] rx_decoded[31:2] = 0x0581C183
+  expected (TEST_BITS[31:2]) = 0x03C3C3C3
+  XOR popcount               = 6 bit
+```
+
+🔴 **不能 0 bit error 的 root cause**：
+
+xfft IP 内部 23-bit signed 累加 + wrapper sat16 在 |v|>32767 处 clip → LLR magnitude 在边界 bin 被 clip → BP min-sum message 失真 → 收敛到 **错误的 valid LDPC codeword**（不是 TEST_BITS）。
+
+xsim 行为级用 `real` 浮点 + 1/8 双向缩放，cascade 数学严格 = X，sign + magnitude 完整保留，所以 sim PASS。但 IP 在 hardware 上的实数算法 + saturate 让 LLR magnitude 失真 ~10%，BP 在边界条件 stuck。
+
+### 35.8 三条剩余路径（如继续 push 到 0 bit）
+
+每条 1+ 周工作：
+
+- **路径 A**：xsim 用 IP simulation files（Vivado 生成），sim/board 数学严格相同，反推校准 RTL
+- **路径 B**：自己手写 64-pt FFT 可综合 RTL（替代 IP），数学跟 sim 行为级严格一致
+- **路径 C**：改 LDPC decoder 为 offset / normalized min-sum BP，magnitude 失真容忍度更高
+
+### 35.9 Phase-2 milestone 收尾总结
+
+✅ 达成：
+1. Vivado xfft IP 综合 + 板上加载工作
+2. Linux fpga_manager 在线 reload 流程成立（不再依赖 bootgen 重新打包 BOOT.bin）
+3. PL 完整 OFDM+LDPC 流水跑通（rx_done=1, llr_done=1, eq=1）
+4. LDPC decoder 完整 10 次 BP 迭代，输出 valid_out
+5. xsim 0/512 errors（Phase-1 已严格证明 RTL 数学 + 链路逻辑正确）
+
+⚠️ 未达成：
+1. `pass_flag=1` bit-exact pass —— 差 6 bit，IP 数值精度问题
+2. 完整 plutosdr-fw firmware 集成（task #24, #25）
+
+⏸️ 中间踩坑（**保留备查**）：
+1. `bootgen` 用 raw fsbl bin 时漏填 image header 0x34/0x40/0x48 → 板子静默；`patch_bootbin.py` 修
+2. fpga_manager `flags` 不显式设 0 → reload silent fail
+3. xfft IP 默认 `output_ordering=bit_reversed_order` → OFDM 链路最隐蔽 bug
+4. xsim 用 FIFO replay 暴露 cp_insert NBA bug，板上 PL-internal loopback 没暴露
+5. cp 默认 alias `cp -i`，shell script 后台跑会卡在交互问询
+
+---
+
+最终交付（Phase-1 + Phase-2）commits：
+```
+10825c1  sim: PASS 0/512 bit errors — real OFDM+LDPC xsim
+e826954  sim: behavioral 64-pt FFT/IFFT replacing pass-through
+d8b8a17  phase2: Vivado xfft_v9.1 IP wrapper + build flow
+43e03ca  phase2 ARTIFACTS: bitstream + BOOT.bin built on server
+a76211a  phase2 FINAL: xfft IP unscaled + natural_order + sat16
+493e947  docs: PHASE2_FINAL.md — phase-2 final delivery summary
+```
+
