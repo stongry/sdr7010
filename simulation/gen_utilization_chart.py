@@ -5,16 +5,29 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Real data from /tmp/util_digital.rpt (digital ofdm_ldpc, build #34)
-# and /tmp/util_pluto_ldsdr.rpt (Path A pluto_ldsdr)
+# Real data — three side-by-side designs:
+#  (1) build #34: original digital loopback with xfft_stub PASS-THROUGH (no
+#      real FFT logic, just AXI-S bypass) — historic minimal baseline.
+#  (2) build #9 FINAL: same RTL pipeline but xfft_stub replaced with
+#      Vivado xfft_v9.1 IP (unscaled + natural_order + sat16 wrapper).
+#      This is the bitstream now running on the board.
+#  (3) Path A pluto_ldsdr: ADI HDL standard pluto BD ported to clg400.
 designs = {
-    "Digital OFDM+LDPC\n(ldsdr_digital_bd)\nbuild #34 PASS": {
+    "Build #34 baseline\nxfft_stub pass-through\n(historic)": {
         "LUT (Logic)":        (5379, 17600),
         "LUT (Memory)":       (3649, 6000),
         "Slice Registers":    (5519, 35200),
         "F7/F8 Muxes":        (1067, 13200),
         "Block RAM (RAMB36)": (0,    60),
         "DSP48E1":            (0,    80),
+    },
+    "Build #9 FINAL\nxfft_v9.1 IP unscaled+natural\nphase-2 on-board": {
+        "LUT (Logic)":        (8556,  17600),
+        "LUT (Memory)":       (4439,  6000),
+        "Slice Registers":    (14655, 35200),
+        "F7/F8 Muxes":        (1728,  13200),
+        "Block RAM (RAMB36)": (2,     60),
+        "DSP48E1":            (12,    80),
     },
     "Path A pluto_ldsdr\n(ADI HDL pluto port,\nclg400 + LVDS_25)": {
         "LUT (Logic)":        (11041, 17600),
@@ -61,17 +74,17 @@ def draw_barh(ax, res, title):
     ax.invert_yaxis()
 
 
-# Bar chart 1: digital
+# Bar chart 1: build #34 baseline (xfft_stub pass-through, historic)
 draw_barh(axes[0],
-          designs["Digital OFDM+LDPC\n(ldsdr_digital_bd)\nbuild #34 PASS"],
-          "Digital OFDM+LDPC (build #34, pass_flag=1)\n"
-          "full bitstream resource usage on xc7z010clg400-2")
+          designs["Build #34 baseline\nxfft_stub pass-through\n(historic)"],
+          "Build #34 baseline (xfft_stub pass-through)\n"
+          "Historic minimal RTL — no real FFT logic")
 
-# Bar chart 2: pluto_ldsdr
+# Bar chart 2: build #9 FINAL (real Vivado xfft IP, what's running on the board)
 draw_barh(axes[1],
-          designs["Path A pluto_ldsdr\n(ADI HDL pluto port,\nclg400 + LVDS_25)"],
-          "Path A pluto_ldsdr (clg400 + LVDS_25)\n"
-          "ADI standard pluto BD with axi_ad9361 + axi_dmac×2")
+          designs["Build #9 FINAL\nxfft_v9.1 IP unscaled+natural\nphase-2 on-board"],
+          "Build #9 FINAL (real Vivado xfft_v9.1 IP)\n"
+          "phase-2 on-board OFDM+LDPC, rx_done=1, WNS=+0.567ns")
 
 
 def draw_pie(ax, sizes, labels, title):
@@ -99,25 +112,27 @@ def draw_pie(ax, sizes, labels, title):
     ax.set_title(title, fontsize=12, pad=22)
 
 
-# Pie chart: digital LUT breakdown
+# Pie chart: build #34 baseline LUT breakdown
 draw_pie(axes[2],
          [3648, 1, 5378, 17600 - 5379 - 3649],
          ["LUT as Distributed RAM\n3,648",
           "LUT as Shift Reg\n1",
           "LUT as Combinational Logic\n5,378",
           "Free LUTs\n8,572"],
-         "Digital design — LUT breakdown\n"
+         "Build #34 baseline — LUT breakdown\n"
          "(total: 9,028 used / 17,600 available)")
 
-# Pie chart: Path A LUT breakdown
+# Pie chart: build #9 FINAL LUT breakdown
+# 8556 logic + 4439 memory used = 12995 used, 4605 free
+# memory split: distributed RAM (mostly) ~ 4435, shift reg ~ 4
 draw_pie(axes[3],
-         [120, 966, 11040, 17600 - 12127],
-         ["LUT as DRAM\n120",
-          "LUT as Shift Reg\n966",
-          "LUT as Combinational Logic\n11,040",
-          "Free LUTs\n5,473"],
-         "Path A pluto_ldsdr — LUT breakdown\n"
-         "(total: 12,127 used / 17,600 available)")
+         [4435, 4, 8556, 17600 - 12995],
+         ["LUT as Distributed RAM\n4,435",
+          "LUT as Shift Reg\n4",
+          "LUT as Combinational Logic\n8,556",
+          "Free LUTs\n4,605"],
+         "Build #9 FINAL — LUT breakdown\n"
+         "(total: 12,995 used / 17,600 available, 73.84%)")
 
 fig.suptitle("Vivado 2024.2 utilisation report  |  device: xc7z010clg400-2  |  speed: -2",
              fontsize=15, weight="bold", y=0.965)

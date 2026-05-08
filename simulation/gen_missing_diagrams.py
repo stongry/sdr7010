@@ -219,9 +219,9 @@ def make_test_pyramid():
     layers = [
         # (y_top, y_bot, x_half, label, color, count)
         (0.95, 0.80, 0.20, "Layer 4: Board RF end-to-end\n(path_x_v3.py over real AD9363)",            "#FF6B6B", "1"),
-        (0.80, 0.60, 0.30, "Layer 3: PL digital loopback on board\n(build #34, EMIO GPIO pass_flag)",    "#FFA500", "1"),
+        (0.80, 0.60, 0.30, "Layer 3: PL real OFDM+LDPC on board\n(phase-2 build #9, xfft_v9.1 IP)",    "#FFA500", "partial"),
         (0.60, 0.35, 0.42, "Layer 2: Vivado xsim gate-level simulation\n(tb_path_x_simple.v, 3× repeats)", "#FFD700", "1"),
-        (0.35, 0.05, 0.50, "Layer 1: Behavioural Verilog testbench\n(tb_ofdm_ldpc.v, full pipeline incl LDPC)", "#90EE90", "1"),
+        (0.35, 0.05, 0.50, "Layer 1: Behavioural xsim full pipeline\n(tb_ofdm_ldpc.v, real DFT + LDPC + 0/512 errors)", "#90EE90", "1"),
     ]
 
     for y_top, y_bot, x_half, label, color, count in layers:
@@ -253,14 +253,22 @@ def make_test_pyramid():
     ax.text(0.96, 0.50, "PASS\n0/32 errors\n(3× repeats)",
             ha="right", va="center", fontsize=9, color="darkorange", weight="bold",
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="darkorange"))
-    ax.text(0.96, 0.70, "PASS\npass_flag=1\nrx_done=1",
+    # Layer 3 phase-2: rx_done=1 but pass_flag=0 (raw 6-12 bit residual,
+    # IP numeric precision limit, see lkh.md §35)
+    ax.text(0.96, 0.70, "PARTIAL\nrx_done=1\npass_flag=0\n(IP precision)",
             ha="right", va="center", fontsize=9, color="darkorange", weight="bold",
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="darkorange"))
+    # Layer 1 phase-1 PASS message
+    ax.text(0.96, 0.20, "PASS\n0/512 errors\n(real DFT cascade)",
+            ha="right", va="center", fontsize=9, color="darkgreen", weight="bold",
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="darkgreen"))
 
     ax.set_xlim(0, 1); ax.set_ylim(0, 1.05)
     ax.axis("off")
-    ax.set_title("SDR7010 — Verification Pyramid\n4 independent layers, all currently PASS",
-                 fontsize=14, weight="bold")
+    ax.set_title("SDR7010 — Verification Pyramid (4 layers)\n"
+                 "Layers 1/2/4 PASS, Layer 3 partial (real OFDM+LDPC on board, "
+                 "rx_done=1 but pass_flag=0 — IP numeric precision)",
+                 fontsize=12, weight="bold")
 
     plt.savefig(f"{OUT}/test_pyramid.png", dpi=120, bbox_inches="tight")
     print("Saved test_pyramid.png")
