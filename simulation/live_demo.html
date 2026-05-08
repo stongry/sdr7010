@@ -236,6 +236,10 @@
     animation: blink 1s infinite;
   }
   .badge.replay { background: var(--cyan); color: var(--bg); }
+  /* 中文字体在 monospace 默认不太好看,这里给中文加 fallback 字体 */
+  body, .panel, .status-row, .metric, .footer, #terminal, .hexdump, .panel-title {
+    font-family: 'JetBrains Mono', 'Consolas', 'Menlo', 'PingFang SC', 'Microsoft YaHei', 'WenQuanYi Micro Hei', monospace;
+  }
 
   .footer {
     text-align: center;
@@ -258,46 +262,46 @@
         ██ ██   ██ ██ ██   ██  ██  ██  ██   ████   ██       ██      ██    ██ ██      ██   ██ ██  ██  ██
    ███████ ██████  ██  ██  ███████  ██████   ██     ██      ██       ██████  ██      ██████  ██      ██
 </pre>
-<div class="sub"><b>SDR7010</b> · LDSDR 7010 rev 2.1 · xc7z010clg400-2 · AD9363 · OFDM 64-FFT + LDPC (1024,512) IRA-QC</div>
+<div class="sub"><b>SDR7010</b> · LDSDR 7010 rev 2.1 板卡 · xc7z010clg400-2 · AD9363 射频 · OFDM 64-FFT + LDPC (1024,512) IRA-QC 编码</div>
 </div>
 
 <div class="grid">
-  <!-- LEFT: live terminal -->
+  <!-- 左:实时终端 -->
   <div class="panel">
-    <div class="badge replay" id="mode-badge">REPLAY · 2026-05-08</div>
-    <div class="panel-title">UART0 / SSH log stream  ·  192.168.2.1</div>
+    <div class="badge replay" id="mode-badge">回放模式 · 2026-05-08</div>
+    <div class="panel-title">UART0 / SSH 日志流  ·  192.168.2.1</div>
     <div id="terminal"></div>
   </div>
 
-  <!-- RIGHT: status panel -->
+  <!-- 右:状态面板 -->
   <div class="panel">
-    <div class="panel-title">PL Status  ·  EMIO bank 2 (0xE000A068)</div>
+    <div class="panel-title">PL 寄存器状态  ·  EMIO bank 2 (0xE000A068)</div>
 
     <div class="status-row">
-      <div><span class="led on-green" id="led-rxdone"></span><span class="status-label">rx_done</span></div>
-      <div class="status-value" style="color:var(--green)" id="val-rxdone">HIGH ✓</div>
+      <div><span class="led on-green" id="led-rxdone"></span><span class="status-label">rx_done 解码完成</span></div>
+      <div class="status-value" style="color:var(--green)" id="val-rxdone">高电平 ✓</div>
     </div>
 
     <div class="status-row">
-      <div><span class="led on-amber" id="led-pass"></span><span class="status-label">pass_flag</span></div>
-      <div class="status-value" style="color:var(--amber)" id="val-pass">LOW (6 bit)</div>
+      <div><span class="led on-amber" id="led-pass"></span><span class="status-label">pass_flag 比对通过</span></div>
+      <div class="status-value" style="color:var(--amber)" id="val-pass">低电平 (差 6 位)</div>
     </div>
 
     <div class="status-row">
-      <div><span class="led on-green"></span><span class="status-label">FPGA loaded</span></div>
-      <div class="status-value" style="color:var(--green)">build #9 FINAL</div>
+      <div><span class="led on-green"></span><span class="status-label">FPGA 比特流</span></div>
+      <div class="status-value" style="color:var(--green)">build #9 终版</div>
     </div>
 
     <div class="status-row">
-      <div><span class="led on-green"></span><span class="status-label">RTL pipeline</span></div>
-      <div class="status-value" style="color:var(--green)">12.6 MHz throughput</div>
+      <div><span class="led on-green"></span><span class="status-label">RTL 流水线</span></div>
+      <div class="status-value" style="color:var(--green)">12.6 MHz 吞吐</div>
     </div>
 
     <div class="hexdump">
       <div><span class="label">rx_decoded[31:2] :</span> <span class="val" id="hex-rx">0x0581C183</span></div>
-      <div><span class="label">expected[31:2]   :</span> <span class="val expect">0x03C3C3C3</span></div>
-      <div><span class="label">XOR (errors)     :</span> <span class="val xor" id="hex-xor">0x06424F46  →  6 bits</span></div>
-      <div><span class="label">last EMIO read   :</span> <span class="val" id="hex-emio">0x60B0306D</span></div>
+      <div><span class="label">期望值 [31:2]    :</span> <span class="val expect">0x03C3C3C3</span></div>
+      <div><span class="label">异或差异         :</span> <span class="val xor" id="hex-xor">0x06424F46  →  6 位</span></div>
+      <div><span class="label">最近 EMIO 读值   :</span> <span class="val" id="hex-emio">0x60B0306D</span></div>
     </div>
 
     <div class="timeline">
@@ -306,38 +310,38 @@
   </div>
 </div>
 
-<!-- bottom metrics row -->
+<!-- 底部指标 -->
 <div class="metrics">
   <div class="metric">
-    <div class="label">Phase-1 xsim BER</div>
-    <div class="value" style="color:var(--green)">0/512<span class="unit">bits</span></div>
+    <div class="label">阶段一 仿真 误码率</div>
+    <div class="value" style="color:var(--green)">0/512<span class="unit">位</span></div>
   </div>
   <div class="metric">
-    <div class="label">CP bit-exact</div>
-    <div class="value" style="color:var(--green)">12/12<span class="unit">symbols</span></div>
+    <div class="label">CP 位级一致</div>
+    <div class="value" style="color:var(--green)">12/12<span class="unit">符号</span></div>
   </div>
   <div class="metric">
-    <div class="label">NULL bin isolation</div>
+    <div class="label">NULL 子载波隔离</div>
     <div class="value" style="color:var(--green)">5000:1</div>
   </div>
   <div class="metric warn">
-    <div class="label">Phase-2 board residual</div>
-    <div class="value" style="color:var(--amber)">6/30<span class="unit">bit XOR</span></div>
+    <div class="label">阶段二 板上残差</div>
+    <div class="value" style="color:var(--amber)">6/30<span class="unit">位异或</span></div>
   </div>
   <div class="metric">
-    <div class="label">Vivado LUT</div>
+    <div class="label">Vivado 查找表</div>
     <div class="value">12 995<span class="unit">/17 600  73.84%</span></div>
   </div>
   <div class="metric">
-    <div class="label">Vivado WNS</div>
+    <div class="label">最差时序裕量</div>
     <div class="value" style="color:var(--green)">+0.567<span class="unit">ns @ 100 MHz</span></div>
   </div>
   <div class="metric">
-    <div class="label">DSP48E1</div>
+    <div class="label">DSP48E1 数字信号处理单元</div>
     <div class="value">12<span class="unit">/80</span></div>
   </div>
   <div class="metric">
-    <div class="label">BRAM (RAMB36)</div>
+    <div class="label">BRAM 块状存储器</div>
     <div class="value">2<span class="unit">/60</span></div>
   </div>
 </div>
@@ -345,9 +349,9 @@
 <div class="footer">
   <a href="https://github.com/stongry/sdr7010">github.com/stongry/sdr7010</a>
   · live_demo.html · 2026-05-08 ·
-  <span style="color:var(--green)">●</span> connected ·
-  Phase-1 xsim PASS · Phase-2 rx_done=1 ·
-  <a href="?live">[switch to LIVE serial]</a>
+  <span style="color:var(--green)">●</span> 已连接 ·
+  阶段一 仿真 通过 · 阶段二 解码完成 rx_done=1 ·
+  <a href="?live">[切换到实时串口模式]</a>
 </div>
 
 <script>
@@ -356,67 +360,67 @@
 // (UART output + EMIO probes during fpga_manager reload + run)
 // ========================================================================
 const BOOT_LOG = [
-  ["info", "[init] Linux 5.15.0-pluto on Zynq-7010"],
-  ["info", "[init] DRAM 256MB · USB CDC 192.168.2.1 · ssh root@analog ready"],
+  ["info", "[启动] Linux 5.15.0-pluto 内核 · Zynq-7010 SoC"],
+  ["info", "[启动] DRAM 256MB · USB CDC 192.168.2.1 · ssh root@analog 就绪"],
   ["", ""],
   ["cmd",  "root@pluto:~# python3 bit_to_bin.py ofdm_ldpc_FINAL.bit ofdm_ldpc.bin"],
-  ["",     "  found sync 0xAA995566 at offset 0x000000B6"],
-  ["",     "  stripped 182 bytes ASCII header"],
-  ["",     "  byte-swapped 1 037 480 bytes (32-bit words)"],
-  ["ok",   "  → 4 149 920 bytes raw configuration written to ofdm_ldpc.bin"],
+  ["info", "  在偏移 0x000000B6 找到同步字 0xAA995566"],
+  ["info", "  剥离 182 字节 ASCII 头部"],
+  ["info", "  按 32 位字节交换 1 037 480 字节"],
+  ["ok",   "  → 4 149 920 字节裸配置已写入 ofdm_ldpc.bin"],
   ["", ""],
   ["cmd",  "root@pluto:~# scp ofdm_ldpc.bin /lib/firmware/"],
-  ["info", "  ofdm_ldpc.bin   100%   3.96MB   2.4MB/s   00:01"],
+  ["info", "  ofdm_ldpc.bin   100%   3.96MB   2.4MB/s   00:01   传输完成"],
   ["", ""],
-  ["cmd",  "root@pluto:~# echo 0 > /sys/class/fpga_manager/fpga0/flags"],
+  ["cmd",  "root@pluto:~# echo 0 > /sys/class/fpga_manager/fpga0/flags    # ★ 关键: flags 必须置 0"],
   ["cmd",  "root@pluto:~# echo 'ofdm_ldpc.bin' > /sys/class/fpga_manager/fpga0/firmware"],
-  ["info", "[fpga_manager] state: write_init"],
-  ["info", "[fpga_manager] state: write"],
-  ["info", "[fpga_manager] state: write_complete"],
-  ["info", "[fpga_manager] DONE pin asserted"],
-  ["ok",   "[fpga_manager] state: operating  ✓"],
+  ["info", "[FPGA 管理器] 状态: write_init  开始写入"],
+  ["info", "[FPGA 管理器] 状态: write       配置流烧录中"],
+  ["info", "[FPGA 管理器] 状态: write_complete 写入完成"],
+  ["info", "[FPGA 管理器] DONE 引脚已拉高"],
+  ["ok",   "[FPGA 管理器] 状态: operating  ✓ PL 已上线"],
   ["", ""],
-  ["info", "[PL] startup_reset released (200 ms)"],
-  ["info", "[PL] OFDM+LDPC pipeline online @ PL_CLK = 100 MHz"],
+  ["info", "[PL] startup_reset 同步复位释放 (持续 200 ms)"],
+  ["info", "[PL] OFDM+LDPC 流水线就绪 @ PL_CLK = 100 MHz"],
   ["", ""],
-  ["cmd",  "root@pluto:~# busybox devmem 0xE000A068"],
+  ["cmd",  "root@pluto:~# busybox devmem 0xE000A068    # 读 EMIO bank 2"],
   ["hex",  "0x60B0306D"],
-  ["info", "  bit[0]   pass_flag         = 1 → flagged after BP iter, but waiting rx_done"],
-  ["info", "  bit[1]   rx_done           = 0  ← decoder still running"],
+  ["info", "  bit[0]   pass_flag        = 1 → BP 迭代后置位, 但 rx_done 仍未拉高"],
+  ["info", "  bit[1]   rx_done          = 0 ← LDPC 解码器仍在迭代中"],
   ["", ""],
-  ["cmd",  "root@pluto:~# while true; do busybox devmem 0xE000A068; sleep 0.05; done"],
-  ["hex",  "0x60B0306D    bit1 (rx_done)  = 0   bit0 (pass_flag) = 1   bit[31:2] = 0x180C0C1B"],
-  ["hex",  "0x60B0306D    bit1 (rx_done)  = 0   bit0 (pass_flag) = 1   bit[31:2] = 0x180C0C1B"],
-  ["hex",  "0x05816066    bit1 (rx_done)  = 0   bit0 (pass_flag) = 0   bit[31:2] = 0x01605819"],
-  ["hex",  "0x05816066    bit1 (rx_done)  = 0   bit0 (pass_flag) = 0   bit[31:2] = 0x01605819"],
-  ["hex",  "0x0581C183    bit1 (rx_done)  = 0   bit0 (pass_flag) = 0   bit[31:2] = 0x01607060"],
-  ["hex",  "0x1606060E    bit1 (rx_done)  = 1   bit0 (pass_flag) = 0   bit[31:2] = 0x05818183  ← BP done"],
+  ["cmd",  "root@pluto:~# while true; do busybox devmem 0xE000A068; sleep 0.05; done    # 50ms 间隔轮询"],
+  ["hex",  "0x60B0306D    rx_done = 0   pass_flag = 1   bit[31:2] = 0x180C0C1B"],
+  ["hex",  "0x60B0306D    rx_done = 0   pass_flag = 1   bit[31:2] = 0x180C0C1B"],
+  ["hex",  "0x05816066    rx_done = 0   pass_flag = 0   bit[31:2] = 0x01605819"],
+  ["hex",  "0x05816066    rx_done = 0   pass_flag = 0   bit[31:2] = 0x01605819"],
+  ["hex",  "0x0581C183    rx_done = 0   pass_flag = 0   bit[31:2] = 0x01607060"],
+  ["hex",  "0x1606060E    rx_done = 1   pass_flag = 0   bit[31:2] = 0x05818183  ← BP 收敛"],
   ["", ""],
-  ["info", "[verify] reading EMIO bank 2 once decoder valid_out asserted"],
+  ["info", "[校验] 检测到 decoder valid_out 拉高,读取 EMIO bank 2 锁存的解码结果"],
   ["cmd",  "root@pluto:~# busybox devmem 0xE000A068 && echo 'rx_decoded:' && busybox devmem 0xE000A06C"],
   ["hex",  "0x1606060E"],
   ["hex",  "rx_decoded[31:0] = 0x0581C183"],
   ["", ""],
-  ["info", "[compare]"],
-  ["info", "  rx_decoded[31:2] = 0x01607060"],
-  ["info", "  TEST_BITS [31:2] = 0x00F0F0F0"],
+  ["info", "[比对]"],
+  ["info", "  rx_decoded[31:2] = 0x01607060   ← 板上解码值"],
+  ["info", "  TEST_BITS [31:2] = 0x00F0F0F0   ← 期望值 (testbench 灌入)"],
   ["",     "                    ────────────"],
-  ["warn", "  XOR              = 0x01972F70  → 6 set bits  (residual after BP)"],
+  ["warn", "  异或 XOR         = 0x01972F70  → 6 个差异位  (BP 后残差)"],
   ["", ""],
-  ["info", "[summary]"],
-  ["ok",   "  ✓  rx_done = 1  → LDPC decoder completed 10 BP iterations"],
-  ["ok",   "  ✓  data path online: IFFT/FFT/CP/equalizer/QPSK demod all valid"],
-  ["ok",   "  ✓  pipeline runs at PL_CLK=100MHz, WNS=+0.567 ns"],
-  ["warn", "  △  pass_flag  = 0  → 6 / 30 bit residual XOR (xfft IP unscaled+sat16 LLR magnitude clipping)"],
-  ["info", "  ⓘ  Phase-1 xsim 0/512 BER bit-exact already verified — RTL+logic correct"],
-  ["info", "  ⓘ  Phase-2 residual is pure numeric-precision (IP cascade ≠ sim float DFT)"],
+  ["info", "[小结]"],
+  ["ok",   "  ✓  rx_done = 1     → LDPC 解码器完成 10 次 BP 迭代"],
+  ["ok",   "  ✓  数据通路就绪    : IFFT / FFT / CP / 信道均衡 / QPSK 解调全程 valid"],
+  ["ok",   "  ✓  PL 流水线时序   : 100 MHz 时钟, WNS 时序裕量 = +0.567 ns"],
+  ["warn", "  △  pass_flag = 0   → 30 位中差 6 位 (xfft IP unscaled+sat16 导致 LLR 幅度被钳)"],
+  ["info", "  ⓘ  阶段一 xsim 已严格证明 0/512 BER 位精确正确 — RTL 与逻辑无误"],
+  ["info", "  ⓘ  阶段二板上残差是纯数值精度问题 (IP 内部 cascade ≠ sim 浮点 DFT)"],
   ["", ""],
-  ["info", "[next] three remediation paths each ~1 week:"],
-  ["info", "  (A)  use Vivado IP simulation files → sim/board math identical → calibrate"],
-  ["info", "  (B)  hand-write 64-pt FFT synthesizable RTL → match sim behavioral DFT"],
-  ["info", "  (C)  switch LDPC to offset min-sum / normalized min-sum (more robust BP)"],
+  ["info", "[后续] 三条修复路径 (每条预估 ~1 周):"],
+  ["info", "  (A)  采用 Vivado IP 仿真文件让 sim/board 数学严格一致后反推校准"],
+  ["info", "  (B)  自写 64 点 FFT 可综合 RTL,完全匹配 sim 的行为级 DFT"],
+  ["info", "  (C)  LDPC 改用 offset min-sum / normalized min-sum 算法,BP 更鲁棒"],
   ["", ""],
-  ["ok",   "[done] board demo complete — see github.com/stongry/sdr7010 for full RTL + logs"],
+  ["ok",   "[结束] 板上演示完毕 — 完整 RTL 与日志见 github.com/stongry/sdr7010"],
 ];
 
 // ========================================================================
@@ -505,10 +509,10 @@ function drawOsc() {
     ctx.beginPath(); ctx.moveTo(0, (H/4)*i); ctx.lineTo(W, (H/4)*i); ctx.stroke();
   }
 
-  // labels
+  // 通道标签
   ctx.fillStyle = '#6e7681'; ctx.font = `${10*window.devicePixelRatio}px monospace`;
-  ctx.fillText('rx_done',   8*window.devicePixelRatio, 16*window.devicePixelRatio);
-  ctx.fillText('pass_flag', 8*window.devicePixelRatio, 70*window.devicePixelRatio);
+  ctx.fillText('rx_done 解码完成',   8*window.devicePixelRatio, 16*window.devicePixelRatio);
+  ctx.fillText('pass_flag 比对通过', 8*window.devicePixelRatio, 70*window.devicePixelRatio);
 
   function trace(arr, color, yMid, yAmp) {
     ctx.strokeStyle = color; ctx.lineWidth = 2*window.devicePixelRatio;
@@ -558,7 +562,7 @@ function startReplay(reason) {
   replayStarted = true;
   mode = 'replay';
   badge.className = 'badge replay';
-  badge.textContent = 'REPLAY · ' + new Date().toISOString().slice(0, 10);
+  badge.textContent = '回放模式 · ' + new Date().toISOString().slice(0, 10);
   if (reason) console.info('[demo]', reason);
   setTimeout(appendNext, 200);
 }
@@ -579,28 +583,28 @@ function applyLiveMessage(msg) {
     const led = document.getElementById('led-rxdone');
     led.className = 'led ' + (msg.rx_done ? 'on-green' : 'on-red');
     document.getElementById('val-rxdone').textContent =
-        msg.rx_done ? 'HIGH ✓' : 'LOW';
+        msg.rx_done ? '高电平 ✓' : '低电平';
     histRx.shift(); histRx.push(msg.rx_done);
   }
   if (typeof msg.pass_flag === 'number') {
     document.getElementById('val-pass').textContent =
-        msg.pass_flag ? 'HIGH ✓' :
-        ('LOW (' + (msg.errors !== undefined ? msg.errors + ' bit' : '—') + ')');
+        msg.pass_flag ? '高电平 ✓' :
+        ('低电平 (' + (msg.errors !== undefined ? '差 ' + msg.errors + ' 位' : '—') + ')');
     histPass.shift(); histPass.push(msg.pass_flag);
   }
   if (typeof msg.errors === 'number') {
     document.getElementById('hex-xor').textContent =
         '0x' + msg.errors.toString(16).toUpperCase().padStart(8, '0') +
-        '  →  ' + msg.errors + ' bits';
+        '  →  ' + msg.errors + ' 位';
   }
 }
 
 if (params.has('replay')) {
   startReplay('forced --replay');
 } else {
-  // try LIVE
+  // 尝试 LIVE 实时模式
   badge.className = 'badge live';
-  badge.textContent = 'detecting ' + WS_URL + ' …';
+  badge.textContent = '正在连接 ' + WS_URL + ' …';
   let connected = false;
 
   let ws;
@@ -609,10 +613,10 @@ if (params.has('replay')) {
   const fallback = setTimeout(() => {
     if (!connected && !params.has('live')) {
       try { ws && ws.close(); } catch (e) {}
-      startReplay('no ws within 250 ms — fall back to REPLAY');
+      startReplay('250ms 内未连上 ws → 降级到回放模式');
     } else if (!connected && params.has('live')) {
       badge.style.background = 'var(--red)';
-      badge.textContent = 'LIVE failed · run demo.py to start bridge';
+      badge.textContent = '实时连接失败 · 请先运行 demo.py 启动桥接';
     }
   }, 250);
 
@@ -621,7 +625,7 @@ if (params.has('replay')) {
       connected = true;
       clearTimeout(fallback);
       mode = 'live';
-      badge.textContent = 'LIVE · ' + WS_URL;
+      badge.textContent = '实时模式 · ' + WS_URL;
     };
     ws.onmessage = (ev) => {
       if (!connected) return;
@@ -630,14 +634,13 @@ if (params.has('replay')) {
     ws.onerror = () => {
       if (!connected && !params.has('live')) {
         clearTimeout(fallback);
-        startReplay('ws error → REPLAY');
+        startReplay('ws 错误 → 回放');
       }
     };
     ws.onclose = () => {
       if (connected) {
-        // bridge dropped after running — show note + start replay
         badge.style.background = 'var(--amber)';
-        badge.textContent = 'LIVE · disconnected · falling back';
+        badge.textContent = '实时连接已断开 · 正在降级';
         connected = false;
         startReplay('ws closed');
       } else if (!params.has('live')) {
