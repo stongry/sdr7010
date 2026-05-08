@@ -39,9 +39,45 @@ MOCK          = os.environ.get("MOCK", "") == "1"
 
 HAS_SSHPASS   = shutil.which("sshpass") is not None
 
+# paramiko fallback (works on Windows where sshpass is unavailable)
+_paramiko = None
+_paramiko_client = None
+try:
+    import paramiko as _paramiko
+except ImportError:
+    pass
+
 
 def emit(tag, msg):
-    print(f"[bridge] {tag}: {msg}", flush=True)
+    print(f"{tag}: {msg}", flush=True)
+
+
+def _paramiko_read():
+    """Persistent SSH session via paramiko — used when sshpass missing (Windows)."""
+    global _paramiko_client
+    if _paramiko is None:
+        return None
+    if _paramiko_client is None:
+        try:
+            c = _paramiko.SSHClient()
+            c.set_missing_host_key_policy(_paramiko.AutoAddPolicy())
+            c.connect(BOARD_HOST, username=BOARD_USER, password=BOARD_PASS,
+                      timeout=3, banner_timeout=3, auth_timeout=3,
+                      allow_agent=False, look_for_keys=False)
+            _paramiko_client = c
+        except Exception as e:
+            emit("warn", f"paramiko connect failed: {e}")
+            return None
+    try:
+        _, stdout, _ = _paramiko_client.exec_command(
+            f"busybox devmem {EMIO_ADDR}", timeout=2)
+        return stdout.read().decode("ascii", "ignore").strip()
+    except Exception as e:
+        emit("warn", f"paramiko exec failed, reconnecting: {e}")
+        try: _paramiko_client.close()
+        except: pass
+        _paramiko_client = None
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -60,6 +96,7 @@ def read_emio_once():
         emio = (hi30 << 2) | (rx_done << 1) | pass_flag
         return emio, rx_done, pass_flag, hi30, errors
 
+    s = None
     if HAS_SSHPASS:
         cmd = ["sshpass", "-p", BOARD_PASS, "ssh",
                "-o", "StrictHostKeyChecking=no",
@@ -67,6 +104,16 @@ def read_emio_once():
                "-o", "BatchMode=no",
                f"{BOARD_USER}@{BOARD_HOST}",
                f"busybox devmem {EMIO_ADDR}"]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            s = r.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+    elif _paramiko is not None:
+        # Windows: use paramiko persistent session (no sshpass needed)
+        s = _paramiko_read()
+        if s is not None:
+            s = s.strip()
     else:
         cmd = ["ssh",
                "-o", "StrictHostKeyChecking=no",
@@ -74,13 +121,14 @@ def read_emio_once():
                "-o", "BatchMode=yes",          # require keypair (no password prompt)
                f"{BOARD_USER}@{BOARD_HOST}",
                f"busybox devmem {EMIO_ADDR}"]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
-    except FileNotFoundError:
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+            s = r.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    if s is None:
         return None
-    except subprocess.TimeoutExpired:
-        return None
-    s = r.stdout.strip()
     if not s.startswith("0x"):
         return None
     try:
@@ -100,7 +148,12 @@ async def board_poller(broadcast):
         emit("mode", "MOCK — using synthetic data")
     else:
         emit("target", f"{BOARD_USER}@{BOARD_HOST} (EMIO {EMIO_ADDR})")
-        emit("auth", "sshpass" if HAS_SSHPASS else "ssh keypair (BatchMode=yes)")
+        if HAS_SSHPASS:
+            emit("auth", "sshpass (Linux/Mac)")
+        elif _paramiko is not None:
+            emit("auth", "paramiko (cross-platform, password-based)")
+        else:
+            emit("auth", "ssh keypair (BatchMode=yes) — install paramiko or sshpass for password auth")
     last = (None, None)
     seq = 0
     fails = 0

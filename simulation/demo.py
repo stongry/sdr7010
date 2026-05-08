@@ -101,6 +101,9 @@ def main():
                     help="force LIVE mode (board must be online)")
     ap.add_argument("--replay", action="store_true",
                     help="force REPLAY mode (skip board)")
+    ap.add_argument("--serial", action="store_true",
+                    help="use UART/COMx bridge (live_demo_bridge_serial.py) "
+                         "— for Windows or when RNDIS unavailable")
     ap.add_argument("--no-browser", action="store_true",
                     help="do not auto-open browser")
     args = ap.parse_args()
@@ -112,13 +115,18 @@ def main():
 
     # detect board
     online = False
+    serial_mode = args.serial
     if args.replay:
         log("mode", "REPLAY (forced)", "amber")
+    elif args.serial:
+        log("mode", "LIVE via serial UART", "green")
+        online = True   # bridge will probe COM port itself
     elif args.live:
         log("probe", f"checking {args.board}:22 ...")
         online = check_board(args.board)
         if not online:
             log("error", f"--live required but {args.board} unreachable", "red")
+            log("hint", "try --serial for UART bridge, or --replay", "amber")
             sys.exit(2)
         log("mode", "LIVE (forced)", "green")
     else:
@@ -146,8 +154,9 @@ def main():
         env = os.environ.copy()
         env["BOARD_HOST"] = args.board
         env["WS_PORT"] = str(args.ws_port)
+        bridge_script = "live_demo_bridge_serial.py" if serial_mode else "live_demo_bridge.py"
         bridge_proc = subprocess.Popen(
-            [sys.executable, str(HERE / "live_demo_bridge.py")],
+            [sys.executable, str(HERE / bridge_script)],
             env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             bufsize=1, text=True)
