@@ -116,13 +116,13 @@ ARR_Y_TX = TX_Y + TX_H / 2
 port_box(0.4, TX_Y + 0.15, 2.4, TX_H - 0.30,
          "tx_info_bits[511:0]\ntx_valid_in")
 box(3.7, TX_Y, 2.2, TX_H, "u_ldpc_enc", "#CFE0F4",
-    "ldpc_encoder\n(1024,512) IRA QC")
+    "(1024,512) IRA QC")
 box(7.1, TX_Y, 2.2, TX_H, "u_tx_map", "#CFE0F4",
-    "tx_subcarrier_map\n48d + 4p + 12N")
+    "48d + 4p + 12N")
 box(10.5, TX_Y, 1.8, TX_H, "u_ifft", "#CFE0F4",
-    "xfft_stub (IFFT)\n64-pt complex")
+    "64-pt complex")
 box(13.5, TX_Y, 2.0, TX_H, "u_cp_ins", "#CFE0F4",
-    "cp_insert\nCP=16, ping-pong")
+    "CP=16, ping-pong")
 port_box(16.7, TX_Y + 0.15, 2.7, TX_H - 0.30,
          "tx_iq_i [15:0]\ntx_iq_q [15:0]\ntx_valid_out")
 
@@ -152,8 +152,7 @@ ax.annotate("", xy=(LB_X + LB_W * 0.5, LB_Y + LB_H),
             xytext=(19.4, ARR_Y_TX - 0.15),
             arrowprops=dict(arrowstyle="->", color="black", lw=1.7,
                             connectionstyle="angle,angleA=0,angleB=90,rad=0"))
-# Place caption above the horizontal arrow segment, OUTSIDE the loopback box
-ax.text((19.4 + (LB_X + LB_W * 0.5)) / 2, ARR_Y_TX + 0.32,
+ax.text(LB_X + LB_W * 0.5 + 0.30, ARR_Y_TX - 1.55,
         "tx_iq", fontsize=10.5, family="monospace",
         bbox=dict(boxstyle="round,pad=0.20",
                   fc="white", ec="#777", lw=0.5))
@@ -175,15 +174,15 @@ ARR_Y_RX = RX_Y + RX_H / 2
 port_box(16.7, RX_Y - 0.35, 2.7, RX_H + 0.30,
          "rx_iq_i [15:0]\nrx_iq_q [15:0]\nrx_valid_in / rx_frame_start")
 box(13.5, RX_Y, 2.0, RX_H, "u_cp_rem", "#FCD8C2",
-    "cp_remove\nframe_start sync")
+    "frame_start sync")
 box(10.5, RX_Y, 1.8, RX_H, "u_fft", "#FCD8C2",
-    "xfft_stub (FFT)\n64-pt")
+    "64-pt")
 box(7.1,  RX_Y, 2.2, RX_H, "u_ch_est", "#FCD8C2",
-    "channel_est\nSTREAM_MODE pilot eq")
+    "STREAM_MODE pilot eq")
 box(3.7,  RX_Y, 2.2, RX_H, "u_rx_demap", "#FCD8C2",
-    "rx_subcarrier_demap\ndrop NULL/pilot → 48d")
+    "drop NULL/pilot → 48d")
 box(0.4,  RX_Y, 2.2, RX_H, "u_qpsk_demod", "#FCD8C2",
-    "qpsk_demod\nSCALE=7 LLR + sat8")
+    "SCALE=7 LLR + sat8")
 
 # RX arrows go right -> left (gaps widened to 1.1-1.2 so caption pills fit)
 harrow(16.7, 15.5, ARR_Y_RX, "rx_iq",        "raw I/Q",        color="#5b3a00")
@@ -214,7 +213,7 @@ ax.text(19.5, (LB_Y + RX_Y + RX_H) / 2,
 # ---------------------------------------------------------------------------
 LLR_X, LLR_Y, LLR_W, LLR_H = 0.4, 3.4, 2.2, 1.4
 box(LLR_X, LLR_Y, LLR_W, LLR_H, "u_llr_buf", "#FCD8C2",
-    "llr_buffer\n1024 LLRs")
+    "1024 LLRs")
 
 # Down arrow from u_qpsk_demod to u_llr_buf
 ax.annotate("", xy=(LLR_X + LLR_W / 2, LLR_Y + LLR_H),
@@ -230,9 +229,9 @@ ax.text(LLR_X + LLR_W / 2 + 0.20, (LLR_Y + LLR_H + RX_Y) / 2,
 # the u_llr_buf -> u_ldpc_dec arrow or its "1024 LLRs" caption.
 yellow_pill(LLR_X + 0.25, LLR_Y - 0.75, 1.7, 0.55, "dbg_llr_done")
 
-LDP_X, LDP_Y, LDP_W, LDP_H = 6.0, 3.4, 2.6, 1.4
+LDP_X, LDP_Y, LDP_W, LDP_H = 6.5, 3.4, 3.0, 1.4
 box(LDP_X, LDP_Y, LDP_W, LDP_H, "u_ldpc_dec", "#FCD8C2",
-    "ldpc_decoder\nmin-sum BP, MAX_ITER=10")
+    "min-sum BP, MAX_ITER=10")
 
 ax.annotate("", xy=(LDP_X, LDP_Y + LDP_H * 0.5),
             xytext=(LLR_X + LLR_W, LLR_Y + LLR_H * 0.5),
@@ -243,7 +242,7 @@ ax.text((LLR_X + LLR_W + LDP_X) / 2, LLR_Y + LLR_H * 0.5 + 0.30,
         bbox=dict(boxstyle="round,pad=0.18", fc="white", ec="none"))
 
 # rx_decoded port
-RXD_X, RXD_Y, RXD_W, RXD_H = 10.5, 3.5, 3.0, 1.2
+RXD_X, RXD_Y, RXD_W, RXD_H = 10.5, 3.5, 3.4, 1.2
 port_box(RXD_X, RXD_Y, RXD_W, RXD_H,
          "rx_decoded[511:0]\nrx_valid_out")
 
