@@ -34,6 +34,12 @@ module xfft_stub (
     output wire        m_axis_data_tlast
 );
 
+// BFP mode adds an m_axis_status_* AXI-S channel carrying the block
+// exponent. We don't need the exponent (QPSK + LDPC are sign-only) so
+// we accept it with tready=1 and ignore the data.
+wire [7:0] u_status_tdata;
+wire       u_status_tvalid;
+
 xfft_64 u_xfft_64 (
     .aclk                       (aclk),
     .aresetn                    (aresetn),
@@ -48,6 +54,9 @@ xfft_64 u_xfft_64 (
     .m_axis_data_tvalid         (m_axis_data_tvalid),
     .m_axis_data_tready         (m_axis_data_tready),
     .m_axis_data_tlast          (m_axis_data_tlast),
+    .m_axis_status_tdata        (u_status_tdata),
+    .m_axis_status_tvalid       (u_status_tvalid),
+    .m_axis_status_tready       (1'b1),
     .event_frame_started        (),
     .event_tlast_unexpected     (),
     .event_tlast_missing        (),
