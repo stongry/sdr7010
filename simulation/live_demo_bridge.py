@@ -1,56 +1,91 @@
 #!/usr/bin/env python3
 """
-live_demo_bridge.py — SSH 板子读 EMIO + WebSocket 推送给 live_demo.html
+live_demo_bridge.py — 板子 EMIO → WebSocket → live_demo.html
+
+环境变量配置 (与 demo.py 协同):
+    BOARD_HOST    板子 IP        (default 192.168.2.1)
+    BOARD_USER    SSH user      (default root)
+    BOARD_PASS    SSH password  (default analog)
+    EMIO_ADDR     EMIO 寄存器  (default 0xE000A068)
+    WS_PORT       WebSocket port (default 8765)
+    POLL_INTERVAL 秒          (default 0.10)
+    MOCK=1        不连板子,伪造数据 (调试 HTML 用)
 
 依赖:
-    pip install websockets paramiko    (或 pip install --break-system-packages ...)
+    pip install --break-system-packages websockets
+    sshpass (system)  — 或者预先 ssh-copy-id 设好 keypair
 
-运行:
-    1. 板子上电, ssh root@192.168.2.1 能通 (或自定义 BOARD_HOST/USER/PASS)
-    2. python3 live_demo_bridge.py
-    3. 浏览器打开 live_demo.html?live  → 自动连 ws://localhost:8765
-
-WS message format (JSON):
-    {
-      "kind": "info|cmd|hex|ok|warn",     # 给终端的颜色
-      "line": "...",                         # 可选, 一行文本
-      "emio": "0x60B0306D",                  # 可选, 当前 EMIO bank 2 hex
-      "rx_done": 0|1,                         # 可选
-      "pass_flag": 0|1,                       # 可选
-      "errors": <int>                          # 可选, XOR 比对错位
-    }
+直接调用:
+    python3 live_demo_bridge.py
+推荐使用 demo.py 启动 (一键 HTTP + WS + 浏览器):
+    python3 demo.py
 """
-import asyncio, json, time, subprocess, sys
+import asyncio
+import json
+import os
+import shutil
+import subprocess
+import sys
 
-# ============================================================
-# Configuration — adjust to your setup
-# ============================================================
-BOARD_HOST    = "192.168.2.1"          # USB-C CDC ethernet on Pluto/LDSDR
-BOARD_USER    = "root"
-BOARD_PASS    = "analog"               # default Pluto password
-EMIO_ADDR     = "0xE000A068"           # bank 2, where rx_done/pass_flag/rx_decoded[31:2] map
-EXPECTED_HI30 = 0x03C3C3C3             # TEST_BITS[31:2]; XOR target
+# ---------------------------------------------------------------------------
+BOARD_HOST    = os.environ.get("BOARD_HOST", "192.168.2.1")
+BOARD_USER    = os.environ.get("BOARD_USER", "root")
+BOARD_PASS    = os.environ.get("BOARD_PASS", "analog")
+EMIO_ADDR     = os.environ.get("EMIO_ADDR", "0xE000A068")
+EXPECTED_HI30 = int(os.environ.get("EXPECTED_HI30", "0x03C3C3C3"), 16) & 0x3FFFFFFF
+WS_PORT       = int(os.environ.get("WS_PORT", "8765"))
+POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL", "0.10"))
+MOCK          = os.environ.get("MOCK", "") == "1"
 
-POLL_INTERVAL_S = 0.10                 # 10 Hz EMIO polling
-WS_PORT         = 8765
+HAS_SSHPASS   = shutil.which("sshpass") is not None
 
-# ============================================================
-# SSH read of EMIO via sshpass (no extra Python deps)
-# ============================================================
+
+def emit(tag, msg):
+    print(f"[bridge] {tag}: {msg}", flush=True)
+
+
+# ---------------------------------------------------------------------------
 def read_emio_once():
-    """Returns (raw_int, rx_done, pass_flag, hi30, errors) or None on fail."""
-    cmd = ["sshpass", "-p", BOARD_PASS, "ssh",
-           "-o", "StrictHostKeyChecking=no",
-           "-o", "ConnectTimeout=2",
-           f"{BOARD_USER}@{BOARD_HOST}",
-           f"busybox devmem {EMIO_ADDR}"]
+    """Returns (emio_int, rx_done, pass_flag, hi30, errors) or None."""
+    if MOCK:
+        # rotate through realistic states
+        import random, time
+        t = time.time()
+        rx_done = 1 if (t % 4) > 0.5 else 0
+        pass_flag = 0
+        hi30 = 0x01607060
+        # add a little flapping
+        if random.random() < 0.05: hi30 ^= (1 << random.randint(0, 29))
+        errors = bin((hi30 ^ EXPECTED_HI30) & 0x3FFFFFFF).count("1")
+        emio = (hi30 << 2) | (rx_done << 1) | pass_flag
+        return emio, rx_done, pass_flag, hi30, errors
+
+    if HAS_SSHPASS:
+        cmd = ["sshpass", "-p", BOARD_PASS, "ssh",
+               "-o", "StrictHostKeyChecking=no",
+               "-o", "ConnectTimeout=2",
+               "-o", "BatchMode=no",
+               f"{BOARD_USER}@{BOARD_HOST}",
+               f"busybox devmem {EMIO_ADDR}"]
+    else:
+        cmd = ["ssh",
+               "-o", "StrictHostKeyChecking=no",
+               "-o", "ConnectTimeout=2",
+               "-o", "BatchMode=yes",          # require keypair (no password prompt)
+               f"{BOARD_USER}@{BOARD_HOST}",
+               f"busybox devmem {EMIO_ADDR}"]
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
-        s = out.stdout.strip()
-        if not s.startswith("0x"):
-            return None
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
+    except FileNotFoundError:
+        return None
+    except subprocess.TimeoutExpired:
+        return None
+    s = r.stdout.strip()
+    if not s.startswith("0x"):
+        return None
+    try:
         v = int(s, 16) & 0xFFFFFFFF
-    except Exception:
+    except ValueError:
         return None
     rx_done   = (v >> 1) & 1
     pass_flag = (v >> 0) & 1
@@ -59,44 +94,59 @@ def read_emio_once():
     return v, rx_done, pass_flag, hi30, errors
 
 
-async def board_poller(send):
-    last_state = (None, None)
-    await send(kind="info", line=f"[bridge] connecting to {BOARD_USER}@{BOARD_HOST} via ssh…")
+# ---------------------------------------------------------------------------
+async def board_poller(broadcast):
+    if MOCK:
+        emit("mode", "MOCK — using synthetic data")
+    else:
+        emit("target", f"{BOARD_USER}@{BOARD_HOST} (EMIO {EMIO_ADDR})")
+        emit("auth", "sshpass" if HAS_SSHPASS else "ssh keypair (BatchMode=yes)")
+    last = (None, None)
     seq = 0
+    fails = 0
     while True:
         r = read_emio_once()
         if r is None:
-            await send(kind="warn",
-                       line=f"[bridge] EMIO read failed (no ssh? wrong password? board offline?)")
+            fails += 1
+            if fails == 1:
+                hint = ""
+                if not HAS_SSHPASS and not MOCK:
+                    hint = (" — install sshpass OR run "
+                            "ssh-copy-id root@" + BOARD_HOST +
+                            " OR set MOCK=1 to test the HTML")
+                await broadcast(kind="warn",
+                                line=f"[bridge] EMIO read failed{hint}")
             await asyncio.sleep(2.0)
             continue
+        if fails > 0:
+            await broadcast(kind="ok", line=f"[bridge] reconnected after {fails} retry")
+            fails = 0
         v, rx_done, pass_flag, hi30, errors = r
-        await send(emio=f"0x{v:08X}",
-                   rx_done=rx_done, pass_flag=pass_flag, errors=errors)
-        # only emit a terminal line when something interesting changes
+        await broadcast(emio=f"0x{v:08X}",
+                        rx_decoded=f"0x{hi30:08X}",
+                        rx_done=rx_done, pass_flag=pass_flag,
+                        errors=errors)
         state = (rx_done, pass_flag)
-        if state != last_state or seq % 20 == 0:
-            await send(kind="hex",
-                       line=f"emio=0x{v:08X}  rx_done={rx_done}  pass_flag={pass_flag}  "
-                            f"hi30=0x{hi30:08X}  XOR={errors} bit")
-            last_state = state
+        if state != last or seq % 30 == 0:
+            await broadcast(kind="hex",
+                            line=f"emio=0x{v:08X}  rx_done={rx_done}  "
+                                 f"pass_flag={pass_flag}  hi30=0x{hi30:08X}  XOR={errors} bit")
+            last = state
         seq += 1
-        await asyncio.sleep(POLL_INTERVAL_S)
+        await asyncio.sleep(POLL_INTERVAL)
 
 
-# ============================================================
-# WebSocket server
-# ============================================================
+# ---------------------------------------------------------------------------
 async def run_ws():
     try:
         import websockets
     except ImportError:
-        print("Install: pip install websockets   (or --break-system-packages)")
+        emit("error", "需要 'websockets' 包: pip install --break-system-packages websockets")
         sys.exit(1)
 
     clients = set()
 
-    async def send(**msg):
+    async def broadcast(**msg):
         if not clients:
             return
         data = json.dumps(msg)
@@ -111,21 +161,23 @@ async def run_ws():
 
     async def handler(ws):
         clients.add(ws)
-        print(f"[ws] client +{len(clients)} connected from {ws.remote_address}")
+        emit("client", f"+1 ({len(clients)} total) {ws.remote_address}")
         try:
+            await broadcast(kind="ok",
+                            line=f"[bridge] client connected — pushing EMIO {EMIO_ADDR}")
             await ws.wait_closed()
         finally:
             clients.discard(ws)
-            print(f"[ws] client -{len(clients)} disconnected")
+            emit("client", f"-1 ({len(clients)} total)")
 
-    print(f"[ws] listening on ws://0.0.0.0:{WS_PORT}")
-    print(f"     open live_demo.html?live in browser to attach")
+    emit("ws", f"listening on ws://0.0.0.0:{WS_PORT}")
     async with websockets.serve(handler, "0.0.0.0", WS_PORT):
-        await board_poller(send)
+        await board_poller(broadcast)
 
 
+# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     try:
         asyncio.run(run_ws())
     except KeyboardInterrupt:
-        print("\n[bridge] bye")
+        emit("stop", "bye")

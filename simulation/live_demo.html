@@ -538,58 +538,114 @@ setInterval(tickOsc, 250);
 drawOsc();
 
 // ========================================================================
-// Optional live mode: ?live → connect to ws://localhost:8765
+// Auto-detect mode:
+//   1. Always try ws://localhost:<WS_PORT> first (silent)
+//   2. If open within 250 ms → LIVE mode (drive panel from real EMIO)
+//   3. Otherwise seamlessly fall back to REPLAY (typewriter)
+//   ?replay = force replay; ?live = force live (no fallback)
 // ========================================================================
 const params = new URLSearchParams(location.search);
-if (params.has('live')) {
-  document.getElementById('mode-badge').textContent = 'LIVE · connecting…';
-  document.getElementById('mode-badge').className = 'badge live';
-  try {
-    const ws = new WebSocket('ws://localhost:8765');
+const wsHost = params.get('host') || location.hostname || 'localhost';
+const wsPort = params.get('ws')   || '8765';
+const WS_URL = `ws://${wsHost}:${wsPort}`;
+
+const badge = document.getElementById('mode-badge');
+let mode = 'detecting';
+let replayStarted = false;
+
+function startReplay(reason) {
+  if (replayStarted) return;
+  replayStarted = true;
+  mode = 'replay';
+  badge.className = 'badge replay';
+  badge.textContent = 'REPLAY · ' + new Date().toISOString().slice(0, 10);
+  if (reason) console.info('[demo]', reason);
+  setTimeout(appendNext, 200);
+}
+
+function applyLiveMessage(msg) {
+  if (msg.line) {
+    const node = makeLine(msg.kind || 'info', msg.line);
+    term.appendChild(node);
+    term.scrollTop = term.scrollHeight;
+  }
+  if (typeof msg.emio === 'string') {
+    document.getElementById('hex-emio').textContent = msg.emio;
+  }
+  if (typeof msg.rx_decoded === 'string') {
+    document.getElementById('hex-rx').textContent = msg.rx_decoded;
+  }
+  if (typeof msg.rx_done === 'number') {
+    const led = document.getElementById('led-rxdone');
+    led.className = 'led ' + (msg.rx_done ? 'on-green' : 'on-red');
+    document.getElementById('val-rxdone').textContent =
+        msg.rx_done ? 'HIGH ✓' : 'LOW';
+    histRx.shift(); histRx.push(msg.rx_done);
+  }
+  if (typeof msg.pass_flag === 'number') {
+    document.getElementById('val-pass').textContent =
+        msg.pass_flag ? 'HIGH ✓' :
+        ('LOW (' + (msg.errors !== undefined ? msg.errors + ' bit' : '—') + ')');
+    histPass.shift(); histPass.push(msg.pass_flag);
+  }
+  if (typeof msg.errors === 'number') {
+    document.getElementById('hex-xor').textContent =
+        '0x' + msg.errors.toString(16).toUpperCase().padStart(8, '0') +
+        '  →  ' + msg.errors + ' bits';
+  }
+}
+
+if (params.has('replay')) {
+  startReplay('forced --replay');
+} else {
+  // try LIVE
+  badge.className = 'badge live';
+  badge.textContent = 'detecting ' + WS_URL + ' …';
+  let connected = false;
+
+  let ws;
+  try { ws = new WebSocket(WS_URL); } catch (e) { startReplay('ws unavailable: ' + e); }
+
+  const fallback = setTimeout(() => {
+    if (!connected && !params.has('live')) {
+      try { ws && ws.close(); } catch (e) {}
+      startReplay('no ws within 250 ms — fall back to REPLAY');
+    } else if (!connected && params.has('live')) {
+      badge.style.background = 'var(--red)';
+      badge.textContent = 'LIVE failed · run demo.py to start bridge';
+    }
+  }, 250);
+
+  if (ws) {
     ws.onopen = () => {
-      document.getElementById('mode-badge').textContent = 'LIVE · ws://localhost:8765';
+      connected = true;
+      clearTimeout(fallback);
+      mode = 'live';
+      badge.textContent = 'LIVE · ' + WS_URL;
     };
     ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        if (msg.line) {
-          const node = makeLine(msg.kind || 'info', msg.line);
-          term.appendChild(node);
-          term.scrollTop = term.scrollHeight;
-        }
-        if (typeof msg.emio === 'string') {
-          document.getElementById('hex-emio').textContent = msg.emio;
-        }
-        if (typeof msg.rx_done === 'number') {
-          const led = document.getElementById('led-rxdone');
-          led.className = 'led ' + (msg.rx_done ? 'on-green' : 'on-red');
-          document.getElementById('val-rxdone').textContent = msg.rx_done ? 'HIGH ✓' : 'LOW';
-        }
-        if (typeof msg.pass_flag === 'number') {
-          document.getElementById('val-pass').textContent =
-              msg.pass_flag ? 'HIGH ✓' : 'LOW (' + (msg.errors || '?') + ' bit)';
-        }
-        if (typeof msg.rx_done === 'number') {
-          histRx.shift(); histRx.push(msg.rx_done);
-        }
-        if (typeof msg.pass_flag === 'number') {
-          histPass.shift(); histPass.push(msg.pass_flag);
-        }
-      } catch (e) {}
+      if (!connected) return;
+      try { applyLiveMessage(JSON.parse(ev.data)); } catch (e) {}
     };
     ws.onerror = () => {
-      document.getElementById('mode-badge').textContent = 'LIVE · ws connect failed (see live_demo_bridge.py)';
-      document.getElementById('mode-badge').style.background = 'var(--red)';
+      if (!connected && !params.has('live')) {
+        clearTimeout(fallback);
+        startReplay('ws error → REPLAY');
+      }
     };
     ws.onclose = () => {
-      document.getElementById('mode-badge').textContent = 'LIVE · ws disconnected';
+      if (connected) {
+        // bridge dropped after running — show note + start replay
+        badge.style.background = 'var(--amber)';
+        badge.textContent = 'LIVE · disconnected · falling back';
+        connected = false;
+        startReplay('ws closed');
+      } else if (!params.has('live')) {
+        clearTimeout(fallback);
+        startReplay('ws closed before open');
+      }
     };
-  } catch (e) {
-    document.getElementById('mode-badge').textContent = 'LIVE · ws not supported';
   }
-} else {
-  // start replay typewriter
-  setTimeout(appendNext, 400);
 }
 </script>
 
