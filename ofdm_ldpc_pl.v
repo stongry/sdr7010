@@ -146,7 +146,13 @@ assign dbg_eq_seen       = dbg_eq_seen_r;
 assign dbg_llr_done_seen = dbg_llr_done_seen_r;
 assign dbg_demod_cnt_o   = dbg_demod_cnt[15:0];
 assign dbg_ifft_cnt_o    = dbg_ifft_cnt[11:0];
-assign dbg_chllr_sym1_lo = dbg_chllr_decoded[125:96];
+// EMIO debug bits[31:2]: switched from raw chllr[125:96] (LDPC ST_INIT
+// hard-decision) to rx_decoded[31:2] (BP-corrected info bits 2..31).
+// Expected after BP: TEST_BITS[31:2] = 0x0F0F0F0F[31:2] = 0x03C3C3C3.
+// If EMIO[31:2] == 0x03C3C3C3 then BP recovered the low info bits (only
+// bit 0/1 might still differ, in which case pass_flag could be 0).
+// If EMIO[31:2] != 0x03C3C3C3 then BP did NOT converge to TEST_BITS.
+assign dbg_chllr_sym1_lo = rx_decoded[31:2];
 
 // ── Pass/fail latch (output ports for EMIO GPIO read by PS) ──────────────
 (* DONT_TOUCH = "TRUE" *) reg pass_flag_r;
@@ -166,7 +172,12 @@ always @(posedge clk or negedge rst_n) begin
         pass_flag_r <= 1'b0;
         rx_done_r   <= 1'b0;
     end else if (rx_valid_out && !rx_done_r) begin
-        pass_flag_r <= (dbg_chllr_decoded[63:0] == TEST_BITS[63:0]);
+        // Compare BP-corrected rx_decoded[63:0] (post LDPC error correction)
+        // against TEST_BITS[63:0]. With the xfft IP scaled mode the raw
+        // hard-decision has ~14 bit flips from quantization (cascade /N²),
+        // but BP iterates and recovers the original info bits because
+        // 14 flips << (1024,512) Z=64 code's correction capability.
+        pass_flag_r <= (rx_decoded[63:0] == TEST_BITS[63:0]);
         rx_done_r   <= 1'b1;
     end
 end
