@@ -152,7 +152,8 @@ ax.annotate("", xy=(LB_X + LB_W * 0.5, LB_Y + LB_H),
             xytext=(19.4, ARR_Y_TX - 0.15),
             arrowprops=dict(arrowstyle="->", color="black", lw=1.7,
                             connectionstyle="angle,angleA=0,angleB=90,rad=0"))
-ax.text(LB_X + LB_W * 0.5 + 0.30, ARR_Y_TX - 1.55,
+# Place caption above the horizontal arrow segment, OUTSIDE the loopback box
+ax.text((19.4 + (LB_X + LB_W * 0.5)) / 2, ARR_Y_TX + 0.32,
         "tx_iq", fontsize=10.5, family="monospace",
         bbox=dict(boxstyle="round,pad=0.20",
                   fc="white", ec="#777", lw=0.5))
@@ -229,7 +230,7 @@ ax.text(LLR_X + LLR_W / 2 + 0.20, (LLR_Y + LLR_H + RX_Y) / 2,
 # the u_llr_buf -> u_ldpc_dec arrow or its "1024 LLRs" caption.
 yellow_pill(LLR_X + 0.25, LLR_Y - 0.75, 1.7, 0.55, "dbg_llr_done")
 
-LDP_X, LDP_Y, LDP_W, LDP_H = 6.5, 3.4, 3.0, 1.4
+LDP_X, LDP_Y, LDP_W, LDP_H = 6.0, 3.4, 2.6, 1.4
 box(LDP_X, LDP_Y, LDP_W, LDP_H, "u_ldpc_dec", "#FCD8C2",
     "ldpc_decoder\nmin-sum BP, MAX_ITER=10")
 
@@ -242,7 +243,7 @@ ax.text((LLR_X + LLR_W + LDP_X) / 2, LLR_Y + LLR_H * 0.5 + 0.30,
         bbox=dict(boxstyle="round,pad=0.18", fc="white", ec="none"))
 
 # rx_decoded port
-RXD_X, RXD_Y, RXD_W, RXD_H = 10.5, 3.5, 3.4, 1.2
+RXD_X, RXD_Y, RXD_W, RXD_H = 10.5, 3.5, 3.0, 1.2
 port_box(RXD_X, RXD_Y, RXD_W, RXD_H,
          "rx_decoded[511:0]\nrx_valid_out")
 
