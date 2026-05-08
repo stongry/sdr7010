@@ -111,7 +111,13 @@ always @(posedge clk or negedge rst_n) begin
                     rd_ptr    <= 7'd0;
                     rd_active <= 1'b0;
                     rd_bank   <= ~rd_bank;  // Switch to other bank next
-                    m_axis_tvalid <= 1'b0;
+                    // BUGFIX: Do NOT set m_axis_tvalid<=0 here. The last
+                    // sample of the burst (rd_ptr=79) needs tvalid=1 in
+                    // the same cycle. Previously the second NBA assignment
+                    // overrode the first, dropping 1 valid every 80 cycles
+                    // — causing each burst to emit only 79 valids and the
+                    // fifo content in the testbench to lose 1 sample per
+                    // symbol, mis-aligning every subsequent symbol on RX.
                 end else begin
                     rd_ptr <= rd_ptr + 1'b1;
                 end

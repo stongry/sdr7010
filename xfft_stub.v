@@ -116,7 +116,11 @@ task automatic do_dft;
     real                ang, sre, sim_acc, ire, iim, scale, val;
     integer             ival;
 begin
-    scale = do_inverse ? 1.0 : (1.0 / 64.0);
+    // Symmetric 1/sqrt(N) scaling on BOTH directions so neither saturates
+    // int16. PAPR-bounded |IFFT/sqrt(64)| <= 5793*sqrt(64)/8 ≈ 5793 for the
+    // OFDM symbol pattern in tx_subcarrier_map. Cascade FFT(IFFT(X)) = X/N,
+    // QPSK demod is sign-based so LDPC still recovers info bits.
+    scale = 1.0 / 8.0;
     for (k = 0; k < N; k = k + 1) begin
         sre     = 0.0;
         sim_acc = 0.0;

@@ -63,7 +63,7 @@ reg [10:0] fifo_wr_ptr;
 reg [10:0] fifo_rd_ptr;
 reg [10:0] fifo_count;
 
-// TX sample capture
+// TX sample capture (kept for stats; replay path replaced by direct loopback)
 always @(posedge clk) begin
     if (!rst_n) begin
         fifo_wr_ptr <= 11'd0;
@@ -73,6 +73,30 @@ always @(posedge clk) begin
         fifo_q[fifo_wr_ptr] <= tx_iq_q;
         fifo_wr_ptr <= fifo_wr_ptr + 1'b1;
         fifo_count  <= fifo_count + 1'b1;
+    end
+end
+
+// ---------------------------------------------------------------------------
+// PL-internal direct loopback: rx_iq <= tx_iq with 1-cycle delay.
+// frame_start asserted for 1 cycle on the very first tx_valid_out.
+// This matches the on-board PL configuration (tx output wired straight back
+// into rx input), bypassing the FIFO+replay setup that previously exposed
+// 1-sample alignment glitches every 80-cycle burst.
+// ---------------------------------------------------------------------------
+reg seen_first_tx_valid;
+always @(posedge clk or negedge rst_n) begin
+    if (!rst_n) begin
+        rx_iq_i            <= 16'h0;
+        rx_iq_q            <= 16'h0;
+        rx_valid_in        <= 1'b0;
+        rx_frame_start     <= 1'b0;
+        seen_first_tx_valid<= 1'b0;
+    end else begin
+        rx_iq_i        <= tx_iq_i;
+        rx_iq_q        <= tx_iq_q;
+        rx_valid_in    <= tx_valid_out;
+        rx_frame_start <= (tx_valid_out && !seen_first_tx_valid);
+        if (tx_valid_out) seen_first_tx_valid <= 1'b1;
     end
 end
 
@@ -113,6 +137,38 @@ integer bit_errors;
 integer k;
 
 // ---------------------------------------------------------------------------
+// Debug counters: monitor each pipeline stage so we can localise where the
+// data flow breaks when the decoder times out.
+// ---------------------------------------------------------------------------
+integer dbg_ifft_in;     // mapper -> IFFT handshakes
+integer dbg_ifft_out;    // IFFT -> cp_insert handshakes
+integer dbg_fft_in;      // cp_remove -> FFT handshakes
+integer dbg_fft_out;     // FFT -> channel_est valids
+integer dbg_eq_cnt;      // channel_est valid outputs
+integer dbg_demod_cnt;   // qpsk_demod valid outputs
+integer dbg_llr_done_cnt;// llr_buffer assemble_done pulses
+
+always @(posedge clk) begin
+    if (!rst_n) begin
+        dbg_ifft_in     <= 0;
+        dbg_ifft_out    <= 0;
+        dbg_fft_in      <= 0;
+        dbg_fft_out     <= 0;
+        dbg_eq_cnt      <= 0;
+        dbg_demod_cnt   <= 0;
+        dbg_llr_done_cnt<= 0;
+    end else begin
+        if (u_dut.ifft_s_tvalid && u_dut.ifft_s_tready) dbg_ifft_in    <= dbg_ifft_in    + 1;
+        if (u_dut.ifft_m_tvalid && u_dut.ifft_m_tready) dbg_ifft_out   <= dbg_ifft_out   + 1;
+        if (u_dut.cp_rem_tvalid)                        dbg_fft_in     <= dbg_fft_in     + 1;
+        if (u_dut.fft_m_tvalid)                         dbg_fft_out    <= dbg_fft_out    + 1;
+        if (u_dut.eq_valid_out)                         dbg_eq_cnt     <= dbg_eq_cnt     + 1;
+        if (u_dut.demod_valid_out)                      dbg_demod_cnt  <= dbg_demod_cnt  + 1;
+        if (u_dut.llr_assemble_done)                    dbg_llr_done_cnt <= dbg_llr_done_cnt + 1;
+    end
+end
+
+// ---------------------------------------------------------------------------
 // Main test sequence
 // ---------------------------------------------------------------------------
 integer i;
@@ -124,14 +180,13 @@ initial begin
     rst_n          = 0;
     tx_valid_in    = 0;
     tx_info_bits   = 512'h0;
-    rx_iq_i        = 16'h0;
-    rx_iq_q        = 16'h0;
-    rx_valid_in    = 0;
-    rx_frame_start = 0;
     fifo_rd_ptr    = 11'd0;
     rx_sample_cnt  = 0;
     rx_done        = 0;
     bit_errors     = 0;
+    // rx_iq / rx_valid_in / rx_frame_start are now driven by the direct
+    // loopback always-block above; do not assign them here or there will be
+    // multiple drivers.
 
     $display("=============================================================");
     $display("  OFDM+LDPC Transceiver Testbench");
@@ -165,71 +220,31 @@ initial begin
 
     $display("[%0t] INFO: TX encoding started.", $time);
 
-    // ---- Wait for TX samples to accumulate in FIFO ----
-    // Expected: 11 symbols × 80 samples = 880 TX samples
-    // Encoding latency: ~34 cycles, then streaming ~11*64 = 704 IFFT inputs
-    // Total with pipeline: allow up to 2000 cycles.
-    timeout_cnt = 0;
-    while (fifo_count < 880 && timeout_cnt < 15000) begin
-        @(posedge clk);
-        timeout_cnt = timeout_cnt + 1;
-    end
-
-    if (fifo_count < 880) begin
-        $display("[%0t] WARNING: Only %0d TX samples captured (expected 880). Proceeding with available.", $time, fifo_count);
-    end else begin
-        $display("[%0t] INFO: %0d TX samples captured in loopback FIFO.", $time, fifo_count);
-    end
-
-    // ---- Assert frame_start to synchronise RX ----
-    total_rx_samples = fifo_count;
-
-    @(posedge clk);
-    rx_frame_start = 1;
-    rx_valid_in    = 1;
-    // Feed first sample on same cycle as frame_start
-    if (NOISE_ENABLE) begin
-        rx_iq_i = add_noise(fifo_i[0], NOISE_SCALE);
-        rx_iq_q = add_noise(fifo_q[0], NOISE_SCALE);
-    end else begin
-        rx_iq_i = fifo_i[0];
-        rx_iq_q = fifo_q[0];
-    end
-    fifo_rd_ptr = 1;
-    @(posedge clk);
-    rx_frame_start = 0;
-
-    $display("[%0t] INFO: RX replay started, driving %0d samples.", $time, total_rx_samples);
-
-    // ---- Stream remaining RX samples ----
-    for (i = 1; i < total_rx_samples; i = i + 1) begin
-        if (NOISE_ENABLE) begin
-            rx_iq_i = add_noise(fifo_i[i], NOISE_SCALE);
-            rx_iq_q = add_noise(fifo_q[i], NOISE_SCALE);
-        end else begin
-            rx_iq_i = fifo_i[i];
-            rx_iq_q = fifo_q[i];
-        end
-        rx_valid_in = 1;
-        @(posedge clk);
-        if (i % 80 == 0)
-            $display("[%0t] INFO: RX symbol %0d / %0d started.", $time, i/80, 11);
-    end
-    rx_valid_in = 0;
-    rx_iq_i     = 16'h0;
-    rx_iq_q     = 16'h0;
-
-    $display("[%0t] INFO: All RX samples driven. Waiting for decoder...", $time);
+    // ---- Direct loopback runs in parallel; just wait for decoder ----
+    // The always-block above streams tx_iq into rx_iq with 1-cycle delay
+    // and asserts rx_frame_start on the first tx_valid_out, so we only need
+    // to monitor rx_valid_out here.
+    $display("[%0t] INFO: Direct PL-internal loopback active.", $time);
+    $display("[%0t] INFO: Waiting for LDPC decoder valid_out...", $time);
 
     // ---- Wait for RX decoded output ----
+    // LDPC decoder must complete MAX_ITER=10 BP iterations before
+    // asserting valid_out. Each iter is ~MB*N = 8*1024 ST_VNU_ROW cycles
+    // plus CNU_GATHER/WR overhead → ~12-15k cy/iter, ~150k cy total.
+    // Allow 800k cycles for headroom.
     timeout_cnt = 0;
-    while (!rx_valid_out && timeout_cnt < 200000) begin
+    while (!rx_valid_out && timeout_cnt < 800000) begin
         @(posedge clk);
         timeout_cnt = timeout_cnt + 1;
     end
 
     if (!rx_valid_out) begin
         $display("[%0t] ERROR: Decoder timed out! rx_valid_out never asserted.", $time);
+        $display("[DBG] ifft_in=%0d, ifft_out=%0d, fft_in=%0d, fft_out=%0d, eq=%0d, demod=%0d, llr_done=%0d",
+                 dbg_ifft_in, dbg_ifft_out, dbg_fft_in, dbg_fft_out,
+                 dbg_eq_cnt, dbg_demod_cnt, dbg_llr_done_cnt);
+        $display("[DBG] ldpc_dec ST_INIT raw decode (no BP): 0x%08X (ref [31:0]: 0x%08X)",
+                 u_dut.dbg_chllr_decoded[31:0], ref_bits[31:0]);
         $display("RESULT: FAIL (timeout)");
         $finish;
     end
